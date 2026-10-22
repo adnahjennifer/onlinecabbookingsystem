@@ -1,0 +1,147 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CabGo | Passenger Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+    <h1>CabGo</h1>
+
+    <nav>
+        <a href="index.html">Home</a>
+        <a href="login.html">Login</a>
+        <a href="register.html">Register</a>
+        <a href="passenger-dashboard.html">Dashboard</a>
+    </nav>
+</header>
+
+<main class="container">
+    <h2>Passenger Dashboard</h2>
+
+    <p>Welcome, Alex! Here is your sample booking overview.</p>
+
+    <section class="stats">
+        <article class="stat-card">
+            <h3>Total Bookings</h3>
+            <p>5</p>
+        </article>
+
+        <article class="stat-card">
+            <h3>Completed Trips</h3>
+            <p>4</p>
+        </article>
+
+        <article class="stat-card">
+            <h3>Active Bookings</h3>
+            <p>1</p>
+        </article>
+    </section>
+
+    <section class="card">
+        <h3>Book a Ride</h3>
+
+        <form id="searchForm">
+            <label for="pickup">Pickup Location</label>
+            <input
+                type="text"
+                id="pickup"
+                name="pickup"
+                placeholder="Enter pickup location"
+                required
+            >
+
+            <label for="destination">Destination</label>
+            <input
+                type="text"
+                id="destination"
+                name="destination"
+                placeholder="Enter destination"
+                required
+            >
+
+            <button class="button" type="submit">Search Cabs</button>
+        </form>
+
+        <div
+            id="searchMessage"
+            class="message"
+            role="status"
+            hidden
+        ></div>
+    </section>
+
+    <section class="card">
+        <h3>Current Booking</h3>
+
+        <p><strong>Booking ID:</strong> BK1001</p>
+        <p><strong>Pickup:</strong> Chennai Central</p>
+        <p><strong>Destination:</strong> Marina Beach</p>
+        <p><strong>Estimated Fare:</strong> ₹250</p>
+
+        <p>
+            <strong>Status:</strong>
+            <span id="bookingStatus" class="badge">Pending (demo)</span>
+        </p>
+
+        <button
+            class="button secondary"
+            type="button"
+            id="cancelBooking"
+        >
+            Cancel Sample Booking
+        </button>
+    </section>
+
+    <section class="card">
+        <h3>Recent Trip History</h3>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Trip ID</th>
+                        <th>Route</th>
+                        <th>Fare</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <td>TR2001</td>
+                        <td>Egmore → T. Nagar</td>
+                        <td>₹180</td>
+                        <td>Completed (demo)</td>
+                    </tr>
+
+                    <tr>
+                        <td>TR2002</td>
+                        <td>Adyar → Velachery</td>
+                        <td>₹220</td>
+                        <td>Completed (demo)</td>
+                    </tr>
+
+                    <tr>
+                        <td>TR2003</td>
+                        <td>Guindy → Anna Nagar</td>
+                        <td>₹300</td>
+                        <td>Completed (demo)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<footer>
+    Online Cab Booking System | Passenger Portal
+</footer>
+
+<script src="js/app.js"></script>
+</body>
+</html>
