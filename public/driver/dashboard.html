@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Driver Dashboard | CabGo</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="driver">
+  <header class="topbar"><a class="brand" href="dashboard.html">CabGo <span>Driver</span></a><div class="user-chip">Demo Driver · DRV-102</div></header>
+  <div class="layout">
+    <aside class="sidebar"><p class="nav-label">WORKSPACE</p><a class="active" href="dashboard.html">Overview</a><a href="#requests">Ride requests</a><a href="#vehicle">My vehicle</a><a href="#earnings">Earnings</a><p class="nav-note">Day 1 prototype · Sample data</p></aside>
+    <main class="main">
+      <div class="page-heading"><div><p class="eyebrow">DRIVER WORKSPACE</p><h1>Good evening, Arjun</h1><p class="muted">Here is your driving summary for today.</p></div><button id="availabilityBtn" class="button button-success">Go offline</button></div>
+      <section class="stats">
+        <article class="stat-card"><span class="muted">Trips today</span><strong>08</strong><small>Sample statistic</small></article>
+        <article class="stat-card"><span class="muted">Today's earnings</span><strong>₹1,840</strong><small>Before adjustments</small></article>
+        <article class="stat-card"><span class="muted">Rating</span><strong>4.8 <span class="star">★</span></strong><small>Sample rating</small></article>
+      </section>
+      <section class="panel" id="requests"><div class="panel-heading"><div><h2>Ride requests</h2><p class="muted">Demo interactions only; not connected to a server.</p></div><span class="pill pill-warning">2 pending</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Request</th><th>Pickup</th><th>Destination</th><th>Estimate</th><th>Status / action</th></tr></thead><tbody>
+          <tr><td>#RB-2041</td><td>Adyar</td><td>T. Nagar</td><td>₹320</td><td><span class="pill pill-warning">Pending</span><div class="actions"><button class="button button-small" data-action="accept">Accept</button><button class="button button-small button-quiet" data-action="reject">Reject</button></div></td></tr>
+          <tr><td>#RB-2042</td><td>Guindy</td><td>Velachery</td><td>₹210</td><td><span class="pill pill-warning">Pending</span><div class="actions"><button class="button button-small" data-action="accept">Accept</button><button class="button button-small button-quiet" data-action="reject">Reject</button></div></td></tr>
+        </tbody></table></div><p id="driverMessage" class="message" role="status">Choose an action to preview the driver workflow.</p>
+      </section>
+      <section class="two-col">
+        <article class="panel" id="vehicle"><div class="panel-heading"><h2>My vehicle</h2><span class="pill pill-success">Approved (demo)</span></div><dl class="details"><div><dt>Registration</dt><dd>TN 09 AB 1234</dd></div><div><dt>Vehicle</dt><dd>Hatchback · Maruti Swift</dd></div><div><dt>Capacity</dt><dd>4 passengers</dd></div></dl></article>
+        <article class="panel" id="earnings"><div class="panel-heading"><h2>Recent earnings</h2><a href="#earnings">View all</a></div><div class="earning-row"><span>Trip #TR-1008</span><strong>₹280</strong></div><div class="earning-row"><span>Trip #TR-1007</span><strong>₹360</strong></div><div class="earning-row"><span>Trip #TR-1006</span><strong>₹240</strong></div></article>
+      </section>
+      <footer>CabGo prototype · Driver dashboard · Data shown is fictional</footer>
+    </main>
+  </div>
+</body>
+</html>
