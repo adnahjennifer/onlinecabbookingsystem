@@ -1,0 +1,25 @@
+{
+  "name": "onlinecabbookingsystem",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adnahjennifer/onlinecabbookingsystem.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/adnahjennifer/onlinecabbookingsystem/issues"
+  },
+  "homepage": "https://github.com/adnahjennifer/onlinecabbookingsystem#readme",
+  "dependencies": {
+    "dotenv": "^18.0.9",
+    "mysql2": "^3.24.6"
+  }
+}
