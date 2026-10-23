@@ -35,3 +35,35 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 });
+
+
+const loginForm = document.getElementById("driverLoginForm");
+if (loginForm) {
+  loginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const email = document.getElementById("email");
+    const password = document.getElementById("password");
+    const message = document.getElementById("loginMessage");
+    message.className = "message";
+    if (!email.value.trim() || !password.value) {
+      message.textContent = "Please enter both your email and password.";
+      message.classList.add("error");
+      return;
+    }
+    if (!email.checkValidity()) {
+      message.textContent = "Please enter a valid email address.";
+      message.classList.add("error");
+      email.focus();
+      return;
+    }
+    if (password.value.length < 6) {
+      message.textContent = "Password must contain at least 6 characters for this demo.";
+      message.classList.add("error");
+      password.focus();
+      return;
+    }
+    message.textContent = "Demo form validated. Opening dashboard preview; this is not real authentication.";
+    message.classList.add("success");
+    window.setTimeout(() => { window.location.href = "dashboard.html"; }, 700);
+  });
+}

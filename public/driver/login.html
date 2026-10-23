@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Driver Login | CabGo</title>
+<link rel="stylesheet" href="../css/member3.css">
+<script src="../js/member3.js" defer></script>
+</head>
+<body class="auth-page" data-role="driver-login">
+<header class="topbar"><a class="brand" href="login.html">CabGo <span>Driver Portal</span></a><a class="top-link" href="dashboard.html">Dashboard preview</a></header>
+<main class="auth-wrap"><section class="auth-card">
+<div class="auth-icon">↗</div><p class="eyebrow">DRIVER WORKSPACE</p><h1>Welcome back</h1>
+<p class="muted">Sign in to view your ride requests and trip summary.</p>
+<form id="driverLoginForm" novalidate>
+<label for="email">Email address</label><input id="email" name="email" type="email" placeholder="driver@example.com" autocomplete="username" required>
+<label for="password">Password</label><input id="password" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required minlength="6">
+<p id="loginMessage" class="message" role="status">Demo mode: no real account is required.</p>
+<button class="button auth-submit" type="submit">Continue to dashboard</button>
+</form>
+<p class="auth-footnote">Day 2 prototype only. This form does not authenticate a real user. Backend login will be connected with Member 2's API.</p>
+</section></main>
+</body></html>
