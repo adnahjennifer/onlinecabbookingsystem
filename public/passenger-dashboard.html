@@ -23,29 +23,31 @@
 <main class="container">
     <h2>Passenger Dashboard</h2>
 
-    <p>Welcome, <span id="passengerName">Alex</span>! Here is your sample booking overview.</p>
+    <p>Welcome, <span id="passengerName">Passenger</span>! Manage your rides and bookings below.</p>
 
-    <section class="stats">
+    <!-- Overview Stats -->
+    <section class="stats" aria-label="Booking statistics">
         <article class="stat-card">
             <h3>Total Bookings</h3>
-            <p>5</p>
+            <p id="statTotalBookings">0</p>
         </article>
 
         <article class="stat-card">
             <h3>Completed Trips</h3>
-            <p>4</p>
+            <p id="statCompletedTrips">0</p>
         </article>
 
         <article class="stat-card">
             <h3>Active Bookings</h3>
-            <p>1</p>
+            <p id="statActiveBookings">0</p>
         </article>
     </section>
 
+    <!-- Cab Search Card -->
     <section class="card">
         <h3>Book a Ride</h3>
 
-        <form id="searchForm">
+        <form id="searchForm" novalidate>
             <label for="pickup">Pickup Location</label>
             <input
                 type="text"
@@ -53,6 +55,7 @@
                 name="pickup"
                 placeholder="Enter pickup location"
                 required
+                autocomplete="off"
             >
 
             <label for="destination">Destination</label>
@@ -62,41 +65,45 @@
                 name="destination"
                 placeholder="Enter destination"
                 required
+                autocomplete="off"
             >
 
-            <button class="button" type="submit">Search Cabs</button>
+            <button class="button" type="submit" id="searchSubmitBtn">Search Cabs</button>
         </form>
 
         <div
             id="searchMessage"
             class="message"
             role="status"
+            aria-live="polite"
             hidden
         ></div>
+
+        <!-- Dynamic Search Results -->
+        <div id="searchResultsSection" class="ride-results-container" hidden>
+            <h4 class="ride-results-title">Available Cabs</h4>
+            <div id="rideCardsGrid" class="ride-cards-grid"></div>
+        </div>
     </section>
 
-    <section class="card">
+    <!-- Dynamic Active Booking Card -->
+    <section class="card" id="currentBookingCard">
         <h3>Current Booking</h3>
 
-        <p><strong>Booking ID:</strong> BK1001</p>
-        <p><strong>Pickup:</strong> Chennai Central</p>
-        <p><strong>Destination:</strong> Marina Beach</p>
-        <p><strong>Estimated Fare:</strong> ₹250</p>
+        <div
+            id="bookingMessage"
+            class="message"
+            role="status"
+            aria-live="polite"
+            hidden
+        ></div>
 
-        <p>
-            <strong>Status:</strong>
-            <span id="bookingStatus" class="badge">Pending (demo)</span>
-        </p>
-
-        <button
-            class="button secondary"
-            type="button"
-            id="cancelBooking"
-        >
-            Cancel Sample Booking
-        </button>
+        <div id="activeBookingContent">
+            <!-- Dynamically populated by passenger.js -->
+        </div>
     </section>
 
+    <!-- Trip History Card -->
     <section class="card">
         <h3>Recent Trip History</h3>
 
@@ -106,37 +113,77 @@
                     <tr>
                         <th>Trip ID</th>
                         <th>Route</th>
+                        <th>Vehicle</th>
                         <th>Fare</th>
                         <th>Status</th>
                     </tr>
                 </thead>
 
-                <tbody>
-                    <tr>
-                        <td>TR2001</td>
-                        <td>Egmore → T. Nagar</td>
-                        <td>₹180</td>
-                        <td>Completed (demo)</td>
-                    </tr>
-
-                    <tr>
-                        <td>TR2002</td>
-                        <td>Adyar → Velachery</td>
-                        <td>₹220</td>
-                        <td>Completed (demo)</td>
-                    </tr>
-
-                    <tr>
-                        <td>TR2003</td>
-                        <td>Guindy → Anna Nagar</td>
-                        <td>₹300</td>
-                        <td>Completed (demo)</td>
-                    </tr>
+                <tbody id="tripHistoryBody">
+                    <!-- Dynamically populated by passenger.js -->
                 </tbody>
             </table>
         </div>
     </section>
 </main>
+
+<!-- In-Page Booking Confirmation Modal -->
+<div id="confirmBookingModal" class="confirm-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle" hidden>
+    <div class="confirm-panel">
+        <h3 id="confirmModalTitle">Confirm Your Booking</h3>
+
+        <div id="confirmModalMessage" class="message" role="status" aria-live="polite" hidden></div>
+
+        <div class="confirm-summary-list">
+            <div class="confirm-summary-item">
+                <strong>Pickup:</strong>
+                <span id="confirmPickup"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Destination:</strong>
+                <span id="confirmDestination"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Vehicle Type:</strong>
+                <span id="confirmVehicleType" style="text-transform: capitalize;"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Estimated Distance:</strong>
+                <span id="confirmDistance"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Estimated Time:</strong>
+                <span id="confirmDuration"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Estimated Fare:</strong>
+                <span id="confirmFare" class="fare-highlight"></span>
+            </div>
+        </div>
+
+        <div class="confirm-actions">
+            <button class="button" type="button" id="confirmBookingBtn">Confirm Booking</button>
+            <button class="button secondary" type="button" id="cancelConfirmBtn">Go Back</button>
+        </div>
+    </div>
+</div>
+
+<!-- In-Page Booking Cancellation Modal -->
+<div id="cancelBookingModal" class="confirm-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancelModalTitle" hidden>
+    <div class="confirm-panel">
+        <h3 id="cancelModalTitle">Cancel Booking</h3>
+
+        <p>Are you sure you want to cancel this booking?</p>
+        <p id="cancelModalWarning" style="color: #627d98; font-size: 13px;">This action cannot be undone.</p>
+
+        <div id="cancelModalMessage" class="message" role="status" aria-live="polite" hidden></div>
+
+        <div class="confirm-actions">
+            <button class="button danger" type="button" id="confirmCancelBtn">Yes, Cancel Booking</button>
+            <button class="button secondary" type="button" id="abortCancelBtn">No, Keep Booking</button>
+        </div>
+    </div>
+</div>
 
 <footer>
     Online Cab Booking System | Passenger Portal
@@ -150,10 +197,23 @@
             const session = getSession();
             if (!session || !session.user) {
                 window.location.replace("login.html");
+                return;
+            }
+            // Role redirection: redirect non-passenger users to their specific dashboards
+            const role = session.user.role;
+            if (role && role !== "passenger") {
+                const roleRedirects = {
+                    driver: "driver/dashboard.html",
+                    admin: "admin/dashboard.html",
+                    super_admin: "superadmin/dashboard.html"
+                };
+                const target = roleRedirects[role] || "login.html";
+                window.location.replace(target);
             }
         }
     })();
 </script>
 <script src="js/app.js"></script>
+<script src="js/passenger.js"></script>
 </body>
 </html>

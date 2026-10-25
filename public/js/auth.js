@@ -13,9 +13,9 @@
  */
 const ROLE_REDIRECTS = {
     passenger: "passenger-dashboard.html",
-    driver: "driver-dashboard.html",
-    admin: "admin-dashboard.html",
-    super_admin: "super-admin-dashboard.html"
+    driver: "driver/dashboard.html",
+    admin: "admin/dashboard.html",
+    super_admin: "superadmin/dashboard.html"
 };
 
 // Immediate guard: If an active session already exists, redirect directly to dashboard.
