@@ -302,6 +302,111 @@ const server = http.createServer(async (req, res) => {
     }
 
 
+    // Check the current logged-in user
+    if (req.method === 'GET' && req.url === '/api/me') {
+        const cookies = req.headers.cookie || '';
+
+        const sessionCookie = cookies
+            .split(';')
+            .map(cookie => cookie.trim())
+            .find(cookie => cookie.startsWith(`${SESSION_COOKIE}=`));
+
+        const sessionToken = sessionCookie
+            ? sessionCookie.substring(SESSION_COOKIE.length + 1)
+            : null;
+
+        const session = sessionToken
+            ? sessions.get(sessionToken)
+            : null;
+
+        if (!session || session.expiresAt <= Date.now()) {
+            if (sessionToken) {
+                sessions.delete(sessionToken);
+            }
+
+            res.writeHead(401);
+            res.end(JSON.stringify({
+                error: {
+                    code: 'UNAUTHENTICATED',
+                    message: 'Please log in to continue.'
+                }
+            }));
+            return;
+        }
+
+        try {
+            const [users] = await pool.execute(
+                `SELECT user_id, full_name, email, role
+                 FROM users
+                 WHERE user_id = ?`,
+                [session.userId]
+            );
+
+            if (users.length === 0) {
+                sessions.delete(sessionToken);
+
+                res.writeHead(401);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'UNAUTHENTICATED',
+                        message: 'User account not found.'
+                    }
+                }));
+                return;
+            }
+
+            res.writeHead(200);
+            res.end(JSON.stringify({
+                user: users[0]
+            }));
+        } catch (error) {
+            console.error('Session check error:', error.message);
+
+            res.writeHead(500);
+            res.end(JSON.stringify({
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'An unexpected server error occurred.'
+                }
+            }));
+        }
+
+        return;
+    }
+
+
+    // Log out the current user
+    if (req.method === 'POST' && req.url === '/api/logout') {
+        const cookies = req.headers.cookie || '';
+
+        const sessionCookie = cookies
+            .split(';')
+            .map(cookie => cookie.trim())
+            .find(cookie => cookie.startsWith(`${SESSION_COOKIE}=`));
+
+        const sessionToken = sessionCookie
+            ? sessionCookie.substring(SESSION_COOKIE.length + 1)
+            : null;
+
+        if (sessionToken) {
+            sessions.delete(sessionToken);
+        }
+
+        res.writeHead(200, {
+            'Set-Cookie':
+                `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+        });
+
+        res.end(JSON.stringify({
+            message: 'Logout successful'
+        }));
+
+        return;
+    }
+
+
+
+
     // 4. Route not found
     res.writeHead(404);
     res.end(JSON.stringify({
