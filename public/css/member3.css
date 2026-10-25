@@ -15,3 +15,9 @@
 .message.error{background:#fff0ef;color:#a6332a}
 .message.success{background:#e3f7ed;color:#13784e}
 @media(max-width:620px){.auth-card{padding:25px 20px}}
+
+.availability-control{display:flex;align-items:center;gap:10px}
+.workflow{list-style:none;padding:0;margin:0}.workflow li{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-bottom:1px solid #edf0f5}
+.workflow li:last-child{border-bottom:0}.workflow strong{font-size:13px}.workflow .muted{margin-top:4px}
+button:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:620px){.availability-control{align-items:flex-end;flex-direction:column}}
