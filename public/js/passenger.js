@@ -1,15 +1,16 @@
 /**
  * CabGo - Online Cab Booking System
- * Passenger Dashboard Controller (Day 3 - Member 1)
+ * Passenger Dashboard Controller (Day 4 - Member 1)
  *
  * Implements:
- * 1. Cab search with route validation & loading states.
- * 2. Fare calculation and display in Indian Rupees (₹).
- * 3. In-page booking confirmation modal with double-booking prevention.
- * 4. Dynamic active booking status card with live driver/vehicle details.
- * 5. Automatic status polling (~10s) with proper cleanup.
- * 6. Booking cancellation controls for requested/accepted rides.
- * 7. Live computed statistics and recent trip history table with empty states.
+ * 1. Session verification on load with GET /api/me and role guard.
+ * 2. Real fare estimation for standard, sedan, and suv cabs using Promise.all.
+ * 3. Booking creation via POST /api/ride-requests with server-computed fares.
+ * 4. Real ride requests listing via GET /api/ride-requests/mine with normalization.
+ * 5. Active booking card with live driver/vehicle details and status progression.
+ * 6. Leak-free polling (~10s) with document visibility pause/resume and status change banners.
+ * 7. Cancellation via POST /api/ride-requests/:id/cancel (requested status only).
+ * 8. Trip history table (completed/cancelled) formatted with en-IN locale and stats cards.
  *
  * STRICT SECURITY: Zero innerHTML with server data (XSS prevention).
  */
@@ -17,15 +18,31 @@
 "use strict";
 
 (function () {
+    // Temporary route distance and duration estimates until real route mapping is integrated.
+    // These placeholder values match backend/server.js so the fare shown to the passenger
+    // equals the fare stored in the database.
+    const DEFAULT_ESTIMATED_DISTANCE_KM = 10;
+    const DEFAULT_ESTIMATED_DURATION_MINUTES = 20;
+
+    // Friendly status descriptions for passenger UI
+    const STATUS_DESCRIPTIONS = {
+        requested: "Looking for a driver...",
+        accepted: "Driver is on the way",
+        started: "Trip in progress",
+        completed: "Trip completed",
+        cancelled: "Cancelled"
+    };
+
     // Resolve helper references safely from window
     const API_CONFIG = (typeof window !== "undefined" && window.API_CONFIG) ? window.API_CONFIG : (typeof API_CONFIG !== "undefined" ? API_CONFIG : {});
     const getSession = (typeof window !== "undefined" && window.getSession) ? window.getSession : () => null;
+    const saveSession = (typeof window !== "undefined" && window.saveSession) ? window.saveSession : () => {};
+    const clearSession = (typeof window !== "undefined" && window.clearSession) ? window.clearSession : () => {};
     const normalizeUser = (typeof window !== "undefined" && window.normalizeUser) ? window.normalizeUser : (u) => u;
     const formatFare = (typeof window !== "undefined" && window.formatFare) ? window.formatFare : (n) => `₹${Number(n).toFixed(2)}`;
     const getErrorMessage = (typeof window !== "undefined" && window.getErrorMessage) ? window.getErrorMessage : (d, fb) => (d && (d.message || (d.error && d.error.message))) || fb;
     const apiRequest = (typeof window !== "undefined" && window.apiRequest) ? window.apiRequest : () => Promise.resolve({ ok: false, status: 0 });
     const showMessage = (typeof window !== "undefined" && window.showMessage) ? window.showMessage : () => {};
-    const clearSession = (typeof window !== "undefined" && window.clearSession) ? window.clearSession : () => {};
 
     // Polling interval reference for active bookings
     let statusPollingTimer = null;
@@ -39,6 +56,10 @@
     // Cached bookings array
     let currentBookings = [];
 
+    // Track active booking between polls to detect status transitions (e.g. to completed/cancelled)
+    let lastActiveBookingId = null;
+    let lastActiveBookingStatus = null;
+
     // Is booking submission in flight
     let isBookingPending = false;
 
@@ -46,49 +67,155 @@
     let isCancellingPending = false;
 
     /* ==========================================================================
-       Initialization & Session Guard
+       Normalization Helper
        ========================================================================== */
 
-    document.addEventListener("DOMContentLoaded", function () {
+    /**
+     * Normalizes a server ride request into a consistent UI booking shape.
+     * Defensively handles missing driver, vehicle, final_fare, started_at, completed_at.
+     * @param {Object} item - Raw request object from server.
+     * @returns {Object|null} Normalized booking object.
+     */
+    function normalizeBooking(item) {
+        if (!item || typeof item !== "object") {
+            return null;
+        }
+
+        const requestId = item.request_id !== undefined ? item.request_id : item.id;
+        const estFare = item.estimated_fare !== undefined && item.estimated_fare !== null
+            ? parseFloat(item.estimated_fare)
+            : 0;
+        const finFare = item.final_fare !== undefined && item.final_fare !== null
+            ? parseFloat(item.final_fare)
+            : null;
+
+        let driver = null;
+        if (item.driver && typeof item.driver === "object") {
+            driver = {
+                full_name: item.driver.full_name || item.driver.name || "",
+                rating: item.driver.rating !== undefined && item.driver.rating !== null ? item.driver.rating : null,
+                phone: item.driver.phone || null
+            };
+        }
+
+        let vehicle = null;
+        if (item.vehicle && typeof item.vehicle === "object") {
+            vehicle = {
+                model: item.vehicle.model || "",
+                registration_number: item.vehicle.registration_number || "",
+                vehicle_type: item.vehicle.vehicle_type || item.vehicle_type || ""
+            };
+        }
+
+        return {
+            request_id: requestId,
+            pickup_location: item.pickup_location || "",
+            drop_location: item.drop_location || "",
+            vehicle_type: (item.vehicle_type || "standard").toLowerCase(),
+            estimated_fare: estFare,
+            final_fare: finFare,
+            status: (item.status || "requested").toLowerCase(),
+            created_at: item.created_at || new Date().toISOString(),
+            driver: driver,
+            vehicle: vehicle,
+            started_at: item.started_at || null,
+            completed_at: item.completed_at || null
+        };
+    }
+
+    /* ==========================================================================
+       Initialization & Session Verification
+       ========================================================================== */
+
+    document.addEventListener("DOMContentLoaded", async function () {
         const session = getSession();
 
-        // Ensure user is authenticated and has passenger role
+        // 1. Synchronous check: Ensure session exists in sessionStorage
         if (!session || !session.user) {
             window.location.replace("login.html");
             return;
         }
 
-        const user = normalizeUser(session.user);
-        if (user.role && user.role !== "passenger") {
-            const redirects = {
+        const cachedUser = normalizeUser(session.user);
+        if (cachedUser.role && cachedUser.role !== "passenger") {
+            const roleRedirects = {
                 driver: "driver/dashboard.html",
                 admin: "admin/dashboard.html",
                 super_admin: "superadmin/dashboard.html"
             };
-            window.location.replace(redirects[user.role] || "login.html");
+            window.location.replace(roleRedirects[cachedUser.role] || "login.html");
             return;
         }
 
-        // Display passenger name in greeting
+        // Display initial passenger name from cached session
         const greetingEl = document.getElementById("passengerName");
         if (greetingEl) {
-            greetingEl.textContent = user.name || user.full_name || "Passenger";
+            greetingEl.textContent = cachedUser.name || cachedUser.full_name || "Passenger";
         }
 
         // Initialize event handlers
         initSearchForm();
         initBookingConfirmationModal();
         initCancellationModal();
+        initVisibilityHandling();
 
-        // Initial fetch of bookings and status
-        fetchBookings();
+        // 2. Real session verification with GET /api/me
+        try {
+            const meRes = await apiRequest(API_CONFIG.ENDPOINTS.me || "/api/me", "GET");
+            if (!meRes.ok || meRes.status === 401) {
+                clearSession();
+                window.location.replace("login.html");
+                return;
+            }
+
+            const verifiedUser = meRes.data && meRes.data.user ? normalizeUser(meRes.data.user) : null;
+            if (!verifiedUser || (verifiedUser.role && verifiedUser.role !== "passenger")) {
+                const roleRedirects = {
+                    driver: "driver/dashboard.html",
+                    admin: "admin/dashboard.html",
+                    super_admin: "superadmin/dashboard.html"
+                };
+                window.location.replace((verifiedUser && roleRedirects[verifiedUser.role]) || "login.html");
+                return;
+            }
+
+            // Sync verified user data in session storage
+            saveSession(verifiedUser, session.token || null);
+            if (greetingEl) {
+                greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
+            }
+        } catch (err) {
+            // Network failure will be handled by apiRequest or offline states
+        }
+
+        // Initial fetch of bookings and active status
+        await fetchBookings();
 
         // Clear polling timer on page unload
         window.addEventListener("beforeunload", stopStatusPolling);
     });
 
+    /**
+     * Pauses status polling when document is hidden and resumes when visible.
+     */
+    function initVisibilityHandling() {
+        document.addEventListener("visibilitychange", function () {
+            if (document.hidden) {
+                stopStatusPolling();
+            } else {
+                const hasActive = currentBookings.some((b) =>
+                    ["requested", "accepted", "started"].includes(b.status)
+                );
+                if (hasActive) {
+                    fetchBookings();
+                    startStatusPolling();
+                }
+            }
+        });
+    }
+
     /* ==========================================================================
-       1. Cab Search Form & Results Rendering
+       1. Cab Search Form & Fare Estimation
        ========================================================================== */
 
     function initSearchForm() {
@@ -122,7 +249,7 @@
                 cardsGrid.textContent = "";
             }
 
-            // Route validation: both required, must differ
+            // Route validation: both required, must differ, max 255 chars
             if (!pickup || !destination) {
                 showMessage(searchMessage, "Please enter both pickup and destination locations.", "error");
                 if (!pickup && pickupInput) {
@@ -130,6 +257,11 @@
                 } else if (!destination && destinationInput) {
                     destinationInput.focus();
                 }
+                return;
+            }
+
+            if (pickup.length > 255 || destination.length > 255) {
+                showMessage(searchMessage, "Location addresses must be less than 255 characters.", "error");
                 return;
             }
 
@@ -145,42 +277,62 @@
             searchBtn.disabled = true;
             searchBtn.setAttribute("aria-busy", "true");
             const originalBtnText = searchBtn.textContent;
-            searchBtn.textContent = "Searching Cabs...";
+            searchBtn.textContent = "Calculating Fares...";
 
             try {
-                const response = await apiRequest(
-                    API_CONFIG.ENDPOINTS.searchRides,
-                    "POST",
-                    {
-                        pickup_location: pickup,
-                        drop_location: destination
-                    }
+                const vehicleTypes = ["standard", "sedan", "suv"];
+                const farePromises = vehicleTypes.map((type) =>
+                    apiRequest(
+                        API_CONFIG.ENDPOINTS.fareEstimate || "/api/fare/estimate",
+                        "POST",
+                        {
+                            vehicle_type: type,
+                            distance_km: DEFAULT_ESTIMATED_DISTANCE_KM,
+                            duration_minutes: DEFAULT_ESTIMATED_DURATION_MINUTES
+                        }
+                    )
                 );
 
-                if (response.status === 401) {
-                    clearSession();
-                    window.location.replace("login.html");
-                    return;
-                }
+                const responses = await Promise.all(farePromises);
 
-                if (!response.ok) {
-                    const errorMsg = getErrorMessage(
-                        response.data,
-                        response.status === 0
-                            ? "Cannot reach the server. Please check your connection."
-                            : "Failed to find available cabs. Please try again."
-                    );
+                const successfulRides = [];
+                let failedCount = 0;
+                let lastError = null;
+
+                responses.forEach((res, index) => {
+                    if (res.ok && res.data && res.data.estimated_fare !== undefined) {
+                        successfulRides.push({
+                            vehicle_type: res.data.vehicle_type || vehicleTypes[index],
+                            estimated_fare: Number(res.data.estimated_fare),
+                            estimated_distance_km: res.data.distance_km || DEFAULT_ESTIMATED_DISTANCE_KM,
+                            estimated_minutes: res.data.duration_minutes || DEFAULT_ESTIMATED_DURATION_MINUTES
+                        });
+                    } else {
+                        failedCount++;
+                        lastError = res;
+                    }
+                });
+
+                if (successfulRides.length === 0) {
+                    const fallbackMsg = lastError && lastError.status === 0
+                        ? "Cannot reach the server. Please check your connection."
+                        : "Failed to calculate cab fares. Please try again.";
+                    const errorMsg = lastError ? getErrorMessage(lastError.data, fallbackMsg) : fallbackMsg;
                     showMessage(searchMessage, errorMsg, "error");
                     return;
                 }
 
-                const rides = response.data && Array.isArray(response.data.rides)
-                    ? response.data.rides
-                    : [];
+                if (failedCount > 0) {
+                    showMessage(
+                        searchMessage,
+                        "Note: Some vehicle categories are temporarily unavailable.",
+                        "info"
+                    );
+                }
 
-                renderSearchResults(rides, pickup, destination);
+                renderSearchResults(successfulRides, pickup, destination);
             } catch (err) {
-                showMessage(searchMessage, "An unexpected error occurred while searching. Please try again.", "error");
+                showMessage(searchMessage, "An unexpected error occurred while calculating fares.", "error");
             } finally {
                 searchBtn.disabled = false;
                 searchBtn.removeAttribute("aria-busy");
@@ -191,6 +343,7 @@
 
     /**
      * Renders cab search result cards safely using document.createElement.
+     * Note: Available driver count is omitted as real backend does not provide it.
      * @param {Array} rides
      * @param {string} pickup
      * @param {string} destination
@@ -198,7 +351,6 @@
     function renderSearchResults(rides, pickup, destination) {
         const resultsSection = document.getElementById("searchResultsSection");
         const cardsGrid = document.getElementById("rideCardsGrid");
-        const searchMessage = document.getElementById("searchMessage");
 
         if (!resultsSection || !cardsGrid) {
             return;
@@ -211,7 +363,7 @@
             emptyDiv.className = "empty-state";
 
             const p = document.createElement("p");
-            p.textContent = "No cabs are currently available for this route. Please try again in a few minutes.";
+            p.textContent = "No cabs are currently available for this route. Please try again shortly.";
             emptyDiv.appendChild(p);
 
             cardsGrid.appendChild(emptyDiv);
@@ -255,14 +407,6 @@
                 pDist.style.margin = "0";
                 pDist.textContent = combinedDistTime;
                 metaEl.appendChild(pDist);
-            }
-
-            if (ride.available_drivers !== undefined) {
-                const pDrivers = document.createElement("p");
-                pDrivers.style.margin = "2px 0 0";
-                const count = parseInt(ride.available_drivers, 10) || 0;
-                pDrivers.textContent = `${count} cab${count === 1 ? "" : "s"} available`;
-                metaEl.appendChild(pDrivers);
             }
 
             // Book button
@@ -309,7 +453,6 @@
 
         cancelBtn.addEventListener("click", closeBookingConfirmationModal);
 
-        // Close on escape key
         document.addEventListener("keydown", function (event) {
             if (event.key === "Escape" && !modal.hidden) {
                 closeBookingConfirmationModal();
@@ -353,12 +496,12 @@
         if (distanceEl) {
             distanceEl.textContent = rideDetails.estimated_distance_km
                 ? `${rideDetails.estimated_distance_km} km`
-                : "Calculating...";
+                : `${DEFAULT_ESTIMATED_DISTANCE_KM} km`;
         }
         if (durationEl) {
             durationEl.textContent = rideDetails.estimated_minutes
                 ? `${rideDetails.estimated_minutes} mins`
-                : "Calculating...";
+                : `${DEFAULT_ESTIMATED_DURATION_MINUTES} mins`;
         }
         if (fareEl) {
             fareEl.textContent = formatFare(rideDetails.estimated_fare);
@@ -393,7 +536,8 @@
     }
 
     /**
-     * Handles the actual booking submission to POST /api/bookings.
+     * Handles the actual booking submission to POST /api/ride-requests.
+     * Server calculates estimated fare itself; do NOT send estimated_fare.
      */
     async function handleConfirmBookingSubmission() {
         if (!pendingRide || isBookingPending) {
@@ -417,14 +561,15 @@
         }
 
         try {
+            // POST /api/ride-requests with only pickup_location, drop_location, and vehicle_type
             const payload = {
                 pickup_location: pendingRide.pickup,
                 drop_location: pendingRide.destination,
-                vehicle_type: pendingRide.vehicle_type,
-                estimated_fare: pendingRide.estimated_fare
+                vehicle_type: pendingRide.vehicle_type
             };
 
-            const response = await apiRequest(API_CONFIG.ENDPOINTS.bookings, "POST", payload);
+            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests";
+            const response = await apiRequest(endpoint, "POST", payload);
 
             if (response.status === 401) {
                 clearSession();
@@ -443,9 +588,12 @@
                 return;
             }
 
-            // Booking successfully created
-            const newBooking = response.data && response.data.booking ? response.data.booking : null;
-            const bookingId = newBooking ? newBooking.request_id : "";
+            // Booking created successfully: read from data.request (or fallback data.booking)
+            const created = response.data && (response.data.request || response.data.booking);
+            const bookingId = created ? created.request_id : "";
+            const confirmedFare = created && created.estimated_fare !== undefined
+                ? formatFare(created.estimated_fare)
+                : formatFare(pendingRide.estimated_fare);
 
             closeBookingConfirmationModal();
 
@@ -459,11 +607,11 @@
                 searchResults.hidden = true;
             }
 
-            // Show success message on the dashboard
+            // Show success message on the dashboard with server returned fare
             if (bookingMessage) {
                 const successText = bookingId
-                    ? `Booking #${bookingId} confirmed successfully! Looking for a nearby driver...`
-                    : "Booking confirmed successfully!";
+                    ? `Booking #${bookingId} confirmed successfully! Estimated fare: ${confirmedFare}. Looking for a nearby driver...`
+                    : `Booking confirmed successfully! Estimated fare: ${confirmedFare}. Looking for a nearby driver...`;
                 showMessage(bookingMessage, successText, "success");
             }
 
@@ -495,11 +643,37 @@
        ========================================================================== */
 
     /**
-     * Fetches all passenger bookings from GET /api/bookings and updates UI.
+     * Checks if a previously active booking transitioned to completed or cancelled between polls.
+     * Displays a one-time status banner when detected.
+     * @param {Array} bookings
+     */
+    function checkStatusTransition(bookings) {
+        if (!lastActiveBookingId) {
+            return;
+        }
+
+        const prev = bookings.find((b) => b.request_id === lastActiveBookingId);
+        if (prev && lastActiveBookingStatus && ["requested", "accepted", "started"].includes(lastActiveBookingStatus)) {
+            const bookingMsg = document.getElementById("bookingMessage");
+            if (prev.status === "completed") {
+                if (bookingMsg) {
+                    showMessage(bookingMsg, `Your trip #${prev.request_id} has been completed.`, "success");
+                }
+            } else if (prev.status === "cancelled") {
+                if (bookingMsg) {
+                    showMessage(bookingMsg, `Your booking #${prev.request_id} has been cancelled.`, "info");
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetches all passenger bookings from GET /api/ride-requests/mine and updates UI.
      */
     async function fetchBookings() {
         try {
-            const response = await apiRequest(API_CONFIG.ENDPOINTS.bookings, "GET");
+            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests/mine";
+            const response = await apiRequest(endpoint, "GET");
 
             if (response.status === 401) {
                 clearSession();
@@ -519,9 +693,15 @@
                 return;
             }
 
-            const bookings = response.data && Array.isArray(response.data.bookings)
-                ? response.data.bookings
-                : [];
+            const rawList = response.data && (
+                Array.isArray(response.data.requests)
+                    ? response.data.requests
+                    : (Array.isArray(response.data.bookings) ? response.data.bookings : [])
+            );
+
+            const bookings = (rawList || []).map(normalizeBooking).filter(Boolean);
+
+            checkStatusTransition(bookings);
 
             currentBookings = bookings;
 
@@ -553,6 +733,8 @@
         if (!activeBooking) {
             // No active booking: stop polling and show empty state
             stopStatusPolling();
+            lastActiveBookingId = null;
+            lastActiveBookingStatus = null;
 
             const emptyDiv = document.createElement("div");
             emptyDiv.className = "empty-state";
@@ -576,72 +758,86 @@
             return;
         }
 
-        // An active booking exists: ensure polling is active
-        startStatusPolling();
+        // An active booking exists: record state for transitions and ensure polling is running
+        lastActiveBookingId = activeBooking.request_id;
+        lastActiveBookingStatus = activeBooking.status;
+
+        if (!document.hidden) {
+            startStatusPolling();
+        }
 
         const detailsDiv = document.createElement("div");
         detailsDiv.className = "active-booking-details";
 
-        // Row 1: Booking ID & Status badge
+        // Row 1: Status badge & friendly description
         const statusBadge = document.createElement("span");
         statusBadge.className = `badge badge-status-${activeBooking.status}`;
         statusBadge.textContent = activeBooking.status.toUpperCase();
-        const rowId = createDetailRow("Booking ID", `#${activeBooking.request_id}`, statusBadge);
+
+        const friendlyStatus = STATUS_DESCRIPTIONS[activeBooking.status] || activeBooking.status;
+        const rowStatus = createDetailRow("Status", friendlyStatus, statusBadge);
+        detailsDiv.appendChild(rowStatus);
+
+        // Row 2: Booking ID
+        const rowId = createDetailRow("Booking ID", `#${activeBooking.request_id}`);
         detailsDiv.appendChild(rowId);
 
-        // Row 2: Route (Pickup & Drop)
+        // Row 3: Route (Pickup & Drop)
         const rowPickup = createDetailRow("Pickup Location", activeBooking.pickup_location);
         const rowDrop = createDetailRow("Destination", activeBooking.drop_location);
         detailsDiv.appendChild(rowPickup);
         detailsDiv.appendChild(rowDrop);
 
-        // Row 3: Vehicle Type & Fare
+        // Row 4: Vehicle Type & Fare
         const rowVehicle = createDetailRow(
             "Vehicle Type",
             activeBooking.vehicle_type
                 ? activeBooking.vehicle_type.charAt(0).toUpperCase() + activeBooking.vehicle_type.slice(1)
                 : "Standard"
         );
-        const rowFare = createDetailRow(
-            "Estimated Fare",
-            formatFare(activeBooking.final_fare != null ? activeBooking.final_fare : activeBooking.estimated_fare)
-        );
+        const fareLabel = activeBooking.final_fare != null ? "Final Fare" : "Estimated Fare";
+        const fareAmount = activeBooking.final_fare != null ? activeBooking.final_fare : activeBooking.estimated_fare;
+        const rowFare = createDetailRow(fareLabel, formatFare(fareAmount));
         detailsDiv.appendChild(rowVehicle);
         detailsDiv.appendChild(rowFare);
 
         // Driver & Vehicle details section
-        if (activeBooking.driver && activeBooking.vehicle) {
+        if (activeBooking.driver || activeBooking.vehicle) {
             const driverBox = document.createElement("div");
             driverBox.className = "driver-info-box";
 
             const boxTitle = document.createElement("h4");
             boxTitle.textContent = "Assigned Driver & Vehicle";
+            driverBox.appendChild(boxTitle);
 
-            const pDriver = document.createElement("p");
-            const strongDriver = document.createElement("strong");
-            strongDriver.textContent = "Driver: ";
-            pDriver.appendChild(strongDriver);
-            pDriver.appendChild(document.createTextNode(activeBooking.driver.full_name || "Assigned Driver"));
+            if (activeBooking.driver) {
+                const pDriver = document.createElement("p");
+                const strongDriver = document.createElement("strong");
+                strongDriver.textContent = "Driver: ";
+                pDriver.appendChild(strongDriver);
+                pDriver.appendChild(document.createTextNode(activeBooking.driver.full_name || "Assigned Driver"));
 
-            if (activeBooking.driver.rating) {
-                const ratingSpan = document.createElement("span");
-                ratingSpan.style.color = "#d97706";
-                ratingSpan.style.marginLeft = "8px";
-                ratingSpan.textContent = `★ ${parseFloat(activeBooking.driver.rating).toFixed(1)}`;
-                pDriver.appendChild(ratingSpan);
+                if (activeBooking.driver.rating) {
+                    const ratingSpan = document.createElement("span");
+                    ratingSpan.style.color = "#d97706";
+                    ratingSpan.style.marginLeft = "8px";
+                    ratingSpan.textContent = `★ ${parseFloat(activeBooking.driver.rating).toFixed(1)}`;
+                    pDriver.appendChild(ratingSpan);
+                }
+                driverBox.appendChild(pDriver);
             }
 
-            const pVehicle = document.createElement("p");
-            const strongVehicle = document.createElement("strong");
-            strongVehicle.textContent = "Vehicle: ";
-            pVehicle.appendChild(strongVehicle);
-            const vehModel = activeBooking.vehicle.model || "Cab";
-            const vehPlate = activeBooking.vehicle.registration_number ? ` (${activeBooking.vehicle.registration_number})` : "";
-            pVehicle.appendChild(document.createTextNode(`${vehModel}${vehPlate}`));
+            if (activeBooking.vehicle) {
+                const pVehicle = document.createElement("p");
+                const strongVehicle = document.createElement("strong");
+                strongVehicle.textContent = "Vehicle: ";
+                pVehicle.appendChild(strongVehicle);
+                const vehModel = activeBooking.vehicle.model || "Cab";
+                const vehPlate = activeBooking.vehicle.registration_number ? ` (${activeBooking.vehicle.registration_number})` : "";
+                pVehicle.appendChild(document.createTextNode(`${vehModel}${vehPlate}`));
+                driverBox.appendChild(pVehicle);
+            }
 
-            driverBox.appendChild(boxTitle);
-            driverBox.appendChild(pDriver);
-            driverBox.appendChild(pVehicle);
             detailsDiv.appendChild(driverBox);
         } else {
             const waitingBox = document.createElement("div");
@@ -650,8 +846,9 @@
             detailsDiv.appendChild(waitingBox);
         }
 
-        // Cancellation Button: only visible when status is 'requested' or 'accepted'
-        if (["requested", "accepted"].includes(activeBooking.status)) {
+        // Cancellation Button: only allowed for status 'requested'
+        // Backend restricts cancellation to 'requested'; accepted rides return 404
+        if (activeBooking.status === "requested") {
             const cancelBtn = document.createElement("button");
             cancelBtn.type = "button";
             cancelBtn.className = "button danger";
@@ -670,6 +867,7 @@
      * Helper to create a two-column detail row for booking info.
      * @param {string} label
      * @param {string} value
+     * @param {HTMLElement} [extraEl]
      * @returns {HTMLElement}
      */
     function createDetailRow(label, value, extraEl) {
@@ -696,6 +894,7 @@
 
     /**
      * Starts polling active bookings list every ~10s if not already running.
+     * Ensures intervals are never duplicated.
      */
     function startStatusPolling() {
         if (!statusPollingTimer) {
@@ -704,7 +903,7 @@
     }
 
     /**
-     * Stops the active polling timer.
+     * Stops and clears the active polling timer.
      */
     function stopStatusPolling() {
         if (statusPollingTimer) {
@@ -782,7 +981,7 @@
     }
 
     /**
-     * Sends POST /api/bookings/:request_id/cancel request.
+     * Sends POST /api/ride-requests/:id/cancel request.
      */
     async function handleConfirmCancellation() {
         if (!pendingCancelBookingId || isCancellingPending) {
@@ -807,7 +1006,7 @@
         try {
             const cancelUrl = typeof API_CONFIG.getCancelBookingUrl === "function"
                 ? API_CONFIG.getCancelBookingUrl(pendingCancelBookingId)
-                : API_CONFIG.ENDPOINTS.cancelBooking.replace(":request_id", encodeURIComponent(pendingCancelBookingId));
+                : `/api/ride-requests/${encodeURIComponent(pendingCancelBookingId)}/cancel`;
 
             const response = await apiRequest(cancelUrl, "POST");
 
@@ -818,13 +1017,16 @@
             }
 
             if (!response.ok) {
-                const errorMsg = getErrorMessage(
-                    response.data,
-                    response.status === 0
-                        ? "Cannot reach the server. Please check your connection."
-                        : "Failed to cancel booking. It may have already started or completed."
-                );
+                let errorMsg;
+                if (response.status === 404) {
+                    errorMsg = "This ride can no longer be cancelled, it may already have been accepted.";
+                } else if (response.status === 0) {
+                    errorMsg = "Cannot reach the server. Please check your connection.";
+                } else {
+                    errorMsg = getErrorMessage(response.data, "Failed to cancel booking.");
+                }
                 showMessage(modalMsg, errorMsg, "error");
+                await fetchBookings();
                 return;
             }
 
@@ -881,7 +1083,8 @@
     }
 
     /**
-     * Renders recent trip history into the table with empty state handling.
+     * Renders trip history into the table: completed and cancelled trips, newest first.
+     * Formats date with toLocaleString("en-IN") and INR currency.
      * @param {Array} bookings
      */
     function updateTripHistoryTable(bookings) {
@@ -892,19 +1095,22 @@
 
         tbody.textContent = "";
 
-        if (bookings.length === 0) {
+        // Filter for completed and cancelled trips (history)
+        const pastTrips = bookings.filter((b) => ["completed", "cancelled"].includes(b.status));
+
+        if (pastTrips.length === 0) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 5;
+            td.colSpan = 7;
             td.className = "empty-state-cell";
-            td.textContent = "No booking history found. Your completed and past rides will appear here.";
+            td.textContent = "No trips yet. Your completed and past rides will appear here.";
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
         }
 
         // Limit to 10 most recent bookings
-        const recent = bookings.slice(0, 10);
+        const recent = pastTrips.slice(0, 10);
 
         recent.forEach((trip) => {
             const tr = document.createElement("tr");
@@ -913,6 +1119,22 @@
             const tdId = document.createElement("td");
             tdId.textContent = `#${trip.request_id}`;
             tr.appendChild(tdId);
+
+            // Date (en-IN)
+            const tdDate = document.createElement("td");
+            let dateStr = "N/A";
+            if (trip.created_at) {
+                try {
+                    dateStr = new Date(trip.created_at).toLocaleString("en-IN", {
+                        dateStyle: "medium",
+                        timeStyle: "short"
+                    });
+                } catch (e) {
+                    dateStr = String(trip.created_at);
+                }
+            }
+            tdDate.textContent = dateStr;
+            tr.appendChild(tdDate);
 
             // Route
             const tdRoute = document.createElement("td");
@@ -939,6 +1161,11 @@
             tdStatus.appendChild(badge);
             tr.appendChild(tdStatus);
 
+            // Driver Name
+            const tdDriver = document.createElement("td");
+            tdDriver.textContent = trip.driver && trip.driver.full_name ? trip.driver.full_name : "—";
+            tr.appendChild(tdDriver);
+
             tbody.appendChild(tr);
         });
     }
@@ -948,7 +1175,8 @@
         window.CabGoPassenger = {
             fetchBookings: fetchBookings,
             openBookingConfirmationModal: openBookingConfirmationModal,
-            openCancellationModal: openCancellationModal
+            openCancellationModal: openCancellationModal,
+            normalizeBooking: normalizeBooking
         };
     }
 })();

@@ -152,6 +152,11 @@ form .button {
     color: #166534;
 }
 
+.message.info {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
 /* Field validation error styles */
 .field-error {
     display: block;

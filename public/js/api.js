@@ -7,14 +7,21 @@
 "use strict";
 
 const API_CONFIG = {
-    USE_MOCK: true,
+    USE_MOCK: false,
     BASE_URL: "",
     ENDPOINTS: {
         register: "/api/register",
         login: "/api/login",
+        logout: "/api/logout",
+        me: "/api/me",
+        fareEstimate: "/api/fare/estimate",
+        rideRequests: "/api/ride-requests",
+        myRideRequests: "/api/ride-requests/mine",
+        cancelRideRequest: "/api/ride-requests/:request_id/cancel",
+        // Backward-compatible aliases for Day 2/3 references
         searchRides: "/api/rides/search",
-        bookings: "/api/bookings",
-        cancelBooking: "/api/bookings/:request_id/cancel",
+        bookings: "/api/ride-requests",
+        cancelBooking: "/api/ride-requests/:request_id/cancel",
         // Driver endpoints (Member 3 - Day 4)
         driverRequests: "/api/driver/requests",
         driverAcceptRequest: "/api/driver/requests/:request_id/accept",
@@ -32,7 +39,8 @@ const API_CONFIG = {
      * @returns {string}
      */
     getCancelBookingUrl(requestId) {
-        return this.ENDPOINTS.cancelBooking.replace(":request_id", encodeURIComponent(requestId));
+        const template = this.ENDPOINTS.cancelRideRequest || this.ENDPOINTS.cancelBooking;
+        return template.replace(":request_id", encodeURIComponent(requestId));
     },
     getDriverAcceptUrl(requestId) {
         return this.ENDPOINTS.driverAcceptRequest.replace(":request_id", encodeURIComponent(requestId));
@@ -1520,14 +1528,18 @@ async function apiRequest(path, method = "GET", body = null) {
                 ok: false,
                 status: 0,
                 data: {
+                    error: {
+                        code: "NETWORK_ERROR",
+                        message: "Cannot reach the server. Check your connection and try again."
+                    },
                     message: "Cannot reach the server. Check your connection and try again."
                 }
             };
         }
     }
 
-    // Auto-redirect on 401 Unauthorized (unless it's an intentional login check)
-    if (result && result.status === 401 && !path.includes("/login")) {
+    // Auto-redirect on 401 Unauthorized (unless it's an intentional login/register check)
+    if (result && result.status === 401 && !path.includes("/login") && !path.includes("/register")) {
         clearSession();
         window.location.replace("login.html");
     }
@@ -1586,10 +1598,16 @@ function initNavigation() {
     }
 
     logoutBtns.forEach((btn) => {
-        btn.addEventListener("click", function (event) {
+        btn.addEventListener("click", async function (event) {
             event.preventDefault();
-            clearSession();
-            window.location.href = "login.html";
+            try {
+                await apiRequest(API_CONFIG.ENDPOINTS.logout || "/api/logout", "POST");
+            } catch (err) {
+                // Silently proceed with local cleanup
+            } finally {
+                clearSession();
+                window.location.href = "login.html";
+            }
         });
     });
 }
