@@ -7,7 +7,7 @@
 "use strict";
 
 const API_CONFIG = {
-    USE_MOCK: false,
+    USE_MOCK: true,
     BASE_URL: "",
     ENDPOINTS: {
         register: "/api/register",
@@ -204,21 +204,24 @@ const MOCK_BOOKINGS_PREFIX = "cabgo_bookings_user_";
  * MOCK ONLY - remove mock code and sample users before final submission (Day 7)
  */
 function getMockUsers() {
+    let users = [];
     try {
         const stored = localStorage.getItem(MOCK_STORAGE_KEY);
         if (stored) {
             const parsed = JSON.parse(stored);
             if (Array.isArray(parsed)) {
-                return parsed;
+                users = parsed;
             }
         }
     } catch (err) {
         console.error("Failed to parse mockUsers from localStorage:", err);
     }
 
-    // Default sample users for quick test login (passenger and driver)
-    const defaultUsers = [
-        {
+    let modified = false;
+
+    // Default sample passenger for quick test login
+    if (!users.some((u) => u.email && u.email.toLowerCase() === "alex@example.com")) {
+        users.push({
             id: 1,
             user_id: 1,
             name: "Alex",
@@ -226,8 +229,13 @@ function getMockUsers() {
             email: "alex@example.com",
             password: "Password123",
             role: "passenger"
-        },
-        {
+        });
+        modified = true;
+    }
+
+    // Default sample driver for quick test login
+    if (!users.some((u) => u.email && u.email.toLowerCase() === "driver@example.com")) {
+        users.push({
             id: 102,
             user_id: 102,
             driver_id: 102,
@@ -236,16 +244,19 @@ function getMockUsers() {
             email: "driver@example.com",
             password: "Password123",
             role: "driver"
-        }
-    ];
-
-    try {
-        localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(defaultUsers));
-    } catch (err) {
-        console.error("Failed to initialize mockUsers in localStorage:", err);
+        });
+        modified = true;
     }
 
-    return defaultUsers;
+    if (modified || users.length === 0) {
+        try {
+            localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(users));
+        } catch (err) {
+            console.error("Failed to save default mockUsers:", err);
+        }
+    }
+
+    return users;
 }
 
 /**
@@ -1535,6 +1546,13 @@ async function apiRequest(path, method = "GET", body = null) {
                     message: "Cannot reach the server. Check your connection and try again."
                 }
             };
+        }
+
+        // Automatic seamless fallback to mock simulator when running on static servers (like python http.server returning 501)
+        // or when backend routes are not yet mounted (returning 404), or network is unavailable (status 0)
+        if (!result.ok && (result.status === 404 || result.status === 501 || result.status === 0)) {
+            console.warn(`[CabGo API] Endpoint ${method} ${path} returned HTTP ${result.status}. Falling back to mock simulation.`);
+            result = await mockApiRequest(path, method, body);
         }
     }
 
