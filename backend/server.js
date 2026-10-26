@@ -468,6 +468,343 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+
+    // Estimate fare using the database fare rules
+    if (req.method === 'POST' && req.url === '/api/fare/estimate') {
+        try {
+            const data = await readRequestBody(req);
+
+            const vehicleType = data.vehicle_type;
+            const distanceKm = data.distance_km;
+            const durationMinutes = data.duration_minutes;
+
+            if (
+                !['standard', 'sedan', 'suv'].includes(vehicleType) ||
+                typeof distanceKm !== 'number' ||
+                !Number.isFinite(distanceKm) ||
+                distanceKm <= 0 ||
+                typeof durationMinutes !== 'number' ||
+                !Number.isFinite(durationMinutes) ||
+                durationMinutes < 0
+            ) {
+                res.writeHead(400);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'INVALID_INPUT',
+                        message: 'Provide a valid vehicle_type, positive distance_km, and non-negative duration_minutes.'
+                    }
+                }));
+                return;
+            }
+
+            const [rules] = await pool.execute(
+                `SELECT base_fare, per_km_rate, per_minute_rate
+                 FROM fare_rules
+                 WHERE vehicle_type = ? AND is_active = TRUE`,
+                [vehicleType]
+            );
+
+            if (rules.length === 0) {
+                res.writeHead(404);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'FARE_RULE_NOT_FOUND',
+                        message: 'No active fare rule exists for this vehicle type.'
+                    }
+                }));
+                return;
+            }
+
+            const rule = rules[0];
+
+            const estimatedFare =
+                Number(rule.base_fare) +
+                distanceKm * Number(rule.per_km_rate) +
+                durationMinutes * Number(rule.per_minute_rate);
+
+            res.writeHead(200);
+            res.end(JSON.stringify({
+                vehicle_type: vehicleType,
+                distance_km: distanceKm,
+                duration_minutes: durationMinutes,
+                estimated_fare: Number(estimatedFare.toFixed(2))
+            }));
+        } catch (error) {
+            console.error('Fare estimate error:', error.message);
+
+            if (res.destroyed || res.writableEnded) {
+                return;
+            }
+
+            if (error.message === 'Invalid JSON in request body') {
+                res.writeHead(400);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'INVALID_JSON',
+                        message: 'Request body must contain valid JSON.'
+                    }
+                }));
+                return;
+            }
+
+            res.writeHead(500);
+            res.end(JSON.stringify({
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'An unexpected server error occurred.'
+                }
+            }));
+        }
+
+        return;
+    }
+
+
+    // Create a passenger ride request
+    if (req.method === 'POST' && req.url === '/api/ride-requests') {
+        const auth = requireRole(req, ['passenger']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const data = await readRequestBody(req);
+
+            const pickupLocation =
+                typeof data.pickup_location === 'string'
+                    ? data.pickup_location.trim()
+                    : '';
+
+            const dropLocation =
+                typeof data.drop_location === 'string'
+                    ? data.drop_location.trim()
+                    : '';
+
+            const vehicleType = data.vehicle_type;
+
+            if (
+                !pickupLocation ||
+                !dropLocation ||
+                pickupLocation.length > 255 ||
+                dropLocation.length > 255 ||
+                pickupLocation.toLowerCase() === dropLocation.toLowerCase() ||
+                !['standard', 'sedan', 'suv'].includes(vehicleType)
+            ) {
+                res.writeHead(400);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'INVALID_INPUT',
+                        message: 'Provide different pickup and drop locations and a valid vehicle type.'
+                    }
+                }));
+                return;
+            }
+
+            // Retrieve the active fare rule
+            const [rules] = await pool.execute(
+                `SELECT base_fare, per_km_rate, per_minute_rate
+                 FROM fare_rules
+                 WHERE vehicle_type = ? AND is_active = TRUE`,
+                [vehicleType]
+            );
+
+            if (rules.length === 0) {
+                res.writeHead(404);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'FARE_RULE_NOT_FOUND',
+                        message: 'No active fare rule exists for this vehicle type.'
+                    }
+                }));
+                return;
+            }
+
+            // Temporary estimate until real route-distance calculation is integrated.
+            // These values are placeholders, not actual route measurements.
+            const estimatedDistanceKm = 10;
+            const estimatedDurationMinutes = 20;
+            const rule = rules[0];
+
+            const estimatedFare = Number((
+                Number(rule.base_fare) +
+                estimatedDistanceKm * Number(rule.per_km_rate) +
+                estimatedDurationMinutes * Number(rule.per_minute_rate)
+            ).toFixed(2));
+
+            const [result] = await pool.execute(
+                `INSERT INTO ride_requests
+                    (passenger_id, pickup_location, drop_location,
+                     vehicle_type, estimated_fare, status)
+                 VALUES (?, ?, ?, ?, ?, 'requested')`,
+                [
+                    auth.session.userId,
+                    pickupLocation,
+                    dropLocation,
+                    vehicleType,
+                    estimatedFare
+                ]
+            );
+
+            res.writeHead(201);
+            res.end(JSON.stringify({
+                message: 'Ride request created successfully',
+                request: {
+                    request_id: result.insertId,
+                    pickup_location: pickupLocation,
+                    drop_location: dropLocation,
+                    vehicle_type: vehicleType,
+                    estimated_fare: estimatedFare,
+                    status: 'requested'
+                }
+            }));
+        } catch (error) {
+            console.error('Ride request creation error:', error.message);
+
+            if (res.destroyed || res.writableEnded) {
+                return;
+            }
+
+            if (error.message === 'Invalid JSON in request body') {
+                res.writeHead(400);
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'INVALID_JSON',
+                        message: 'Request body must contain valid JSON.'
+                    }
+                }));
+                return;
+            }
+
+            res.writeHead(500);
+            res.end(JSON.stringify({
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'An unexpected server error occurred.'
+                }
+            }));
+        }
+
+        return;
+    }
+
+
+if (req.method === 'GET' && req.url === '/api/ride-requests/mine') {
+    const auth = requireRole(req, ['passenger']);
+
+    if (!auth.ok) {
+        res.writeHead(auth.status, {
+            'Content-Type': 'application/json'
+        });
+        res.end(JSON.stringify({ error: auth.error }));
+        return;
+    }
+
+    try {
+        const [requests] = await pool.execute(
+            `SELECT request_id, pickup_location, drop_location,
+                    vehicle_type, estimated_fare, status, created_at
+             FROM ride_requests
+             WHERE passenger_id = ?
+             ORDER BY created_at DESC`,
+            [auth.session.userId]
+        );
+
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
+        });
+        res.end(JSON.stringify({ requests }));
+    } catch (error) {
+        console.error('Get ride requests error:', error);
+
+        res.writeHead(500, {
+            'Content-Type': 'application/json'
+        });
+        res.end(JSON.stringify({
+            error: {
+                code: 'SERVER_ERROR',
+                message: 'Could not retrieve ride requests.'
+            }
+        }));
+    }
+
+    return;
+}
+
+    
+
+    //cancel api
+
+const cancelRideMatch = req.url.match(
+    /^\/api\/ride-requests\/(\d+)\/cancel$/
+);
+
+if (req.method === 'POST' && cancelRideMatch) {
+    const auth = requireRole(req, ['passenger']);
+
+    if (!auth.ok) {
+        res.writeHead(auth.status, {
+            'Content-Type': 'application/json'
+        });
+        res.end(JSON.stringify({ error: auth.error }));
+        return;
+    }
+
+    try {
+        const requestId = Number(cancelRideMatch[1]);
+
+        const [result] = await pool.execute(
+            `UPDATE ride_requests
+             SET status = 'cancelled'
+             WHERE request_id = ?
+               AND passenger_id = ?
+               AND status = 'requested'`,
+            [requestId, auth.session.userId]
+        );
+
+        if (result.affectedRows === 0) {
+            res.writeHead(404, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({
+                error: {
+                    code: 'REQUEST_NOT_FOUND_OR_NOT_CANCELLABLE',
+                    message: 'Ride request not found or cannot be cancelled.'
+                }
+            }));
+            return;
+        }
+
+        res.writeHead(200, {
+            'Content-Type': 'application/json'
+        });
+        res.end(JSON.stringify({
+            message: 'Ride request cancelled successfully.',
+            request_id: requestId,
+            status: 'cancelled'
+        }));
+    } catch (error) {
+        console.error('Cancel ride request error:', error);
+
+        res.writeHead(500, {
+            'Content-Type': 'application/json'
+        });
+        res.end(JSON.stringify({
+            error: {
+                code: 'SERVER_ERROR',
+                message: 'Could not cancel ride request.'
+            }
+        }));
+    }
+
+    return;
+}
+
+
+
+
     // 4. Route not found
     res.writeHead(404);
     res.end(JSON.stringify({
