@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Driver Earnings | CabGo</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/api.js"></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="driver">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Driver Portal</span></a>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <span class="user-chip" id="driverUserChip">Arjun S. · DRV-102</span>
+      <button class="button button-small button-quiet" id="driverLogoutBtn" type="button" style="color:#ffffff;background:rgba(255,255,255,0.15);">Logout</button>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">DRIVER WORKSPACE</p>
+      <a href="dashboard.html">Overview</a>
+      <a href="ride-requests.html">Ride requests</a>
+      <a href="vehicles.html">My vehicles</a>
+      <a class="active" href="earnings.html">Earnings</a>
+      <p class="nav-note">CabGo Driver Platform<br>Member 3 · Day 4</p>
+    </aside>
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">DRIVER WORKSPACE</p>
+          <h1>Driver earnings & trip payouts</h1>
+          <p class="muted">Summary of recorded fares and completed trip revenues.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="dataModeBadge" class="mode-badge mode-mock">Demo Mode</span>
+          <button id="refreshEarningsBtn" class="button button-quiet button-small" type="button">Refresh data</button>
+        </div>
+      </div>
+
+      <section class="stats">
+        <article class="stat-card">
+          <span class="muted">Total Gross Earnings</span>
+          <strong id="earningsTotal">₹0.00</strong>
+          <small>Cumulative fare revenue</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Completed Trips</span>
+          <strong id="earningsCount">0</strong>
+          <small>Successfully delivered rides</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Average Fare / Trip</span>
+          <strong id="earningsAverage">₹0.00</strong>
+          <small>Mean fare across all trips</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Highest Fare</span>
+          <strong id="earningsMax">₹0.00</strong>
+          <small>Top single trip earning</small>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Completed trips statement</h2>
+            <p class="muted">Itemized list of recorded fares from the database trips table.</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Trip ID</th>
+                <th>Date & Time</th>
+                <th>Passenger</th>
+                <th>Route</th>
+                <th>Vehicle</th>
+                <th>Recorded Fare</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="earningsTableBody">
+              <!-- Dynamically populated by member3.js -->
+              <tr>
+                <td colspan="7">
+                  <div class="loading-state">
+                    <div class="spinner"></div>
+                    <span>Loading earnings records...</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p id="earningsMessage" class="message" role="status" aria-live="polite">Summary loaded successfully.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Fare calculation & payout policy</h2>
+          <span class="pill pill-info">Fare Rules</span>
+        </div>
+        <p class="muted" style="line-height:1.6;font-size:12px;">
+          Fares are calculated based on agreed fare rules (Base Fare + Per-Kilometre Rate + Per-Minute Duration Rate) recorded in the shared database schema. Final fares are logged when a driver completes a trip and directly contribute to the driver's gross earnings.
+        </p>
+      </section>
+
+      <footer>CabGo · Member 3 Day 4 · Driver Earnings Statement</footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,14 +1,169 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ride Requests | CabGo</title><link rel="stylesheet" href="../css/member3.css"><script src="../js/member3.js" defer></script></head>
-<body data-role="driver"><header class="topbar"><a class="brand" href="dashboard.html">CabGo <span>Driver Portal</span></a><span class="user-chip">Demo Driver · DRV-102</span></header>
-<div class="layout"><aside class="sidebar"><p class="nav-label">DRIVER WORKSPACE</p><a href="dashboard.html">Overview</a><a class="active" href="ride-requests.html">Ride requests</a><a href="dashboard.html#vehicle">My vehicle</a><a href="dashboard.html#earnings">Earnings</a><p class="nav-note">Day 3 prototype · Sample data</p></aside>
-<main class="main"><div class="page-heading"><div><p class="eyebrow">DRIVER WORKSPACE</p><h1>Ride requests</h1><p class="muted">Review passenger requests and accept or reject them.</p></div><div class="availability-control"><span id="availabilityState" class="pill pill-success">Online (demo)</span><button id="availabilityBtn" class="button button-success" type="button">Go offline</button></div></div>
-<section class="stats"><article class="stat-card"><span class="muted">Pending requests</span><strong id="pendingCount">2</strong><small>Sample data</small></article><article class="stat-card"><span class="muted">Accepted today</span><strong id="acceptedCount">0</strong><small>Demo count</small></article><article class="stat-card"><span class="muted">Rejected today</span><strong id="rejectedCount">0</strong><small>Demo count</small></article></section>
-<section class="panel"><div class="panel-heading"><div><h2>New requests</h2><p class="muted">Actions update this page only.</p></div><button id="resetRequests" class="button button-quiet button-small" type="button">Reset demo</button></div>
-<div class="table-wrap"><table><thead><tr><th>Request ID</th><th>Passenger</th><th>Pickup</th><th>Destination</th><th>Estimate</th><th>Status / action</th></tr></thead><tbody id="requestsBody">
-<tr data-request-id="RB-2041" data-status="pending"><td>#RB-2041</td><td>Priya S.</td><td>Adyar</td><td>T. Nagar</td><td>₹320</td><td><span class="pill pill-warning status-pill">Pending</span><div class="actions"><button class="button button-small" data-action="accept" type="button">Accept</button><button class="button button-small button-quiet" data-action="reject" type="button">Reject</button></div></td></tr>
-<tr data-request-id="RB-2042" data-status="pending"><td>#RB-2042</td><td>Rahul M.</td><td>Guindy</td><td>Velachery</td><td>₹210</td><td><span class="pill pill-warning status-pill">Pending</span><div class="actions"><button class="button button-small" data-action="accept" type="button">Accept</button><button class="button button-small button-quiet" data-action="reject" type="button">Reject</button></div></td></tr>
-</tbody></table></div><p id="driverMessage" class="message" role="status" aria-live="polite">Choose Accept or Reject to test the workflow.</p></section>
-<section class="panel"><div class="panel-heading"><h2>Driver workflow</h2><span class="pill">Prototype</span></div><ol class="workflow"><li><b>1.</b><div><strong>Receive request</strong><p class="muted">Review pickup, destination and estimated fare.</p></div></li><li><b>2.</b><div><strong>Accept or reject</strong><p class="muted">Choose an action for a pending request.</p></div></li><li><b>3.</b><div><strong>Start and complete trip</strong><p class="muted">Trip lifecycle actions are planned for Day 4.</p></div></li></ol></section>
-<footer>CabGo · Member 3 Day 3 · Fictional demo data</footer></main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ride Requests & Trip Lifecycle | CabGo</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/api.js"></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="driver">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Driver Portal</span></a>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <span class="user-chip" id="driverUserChip">Arjun S. · DRV-102</span>
+      <button class="button button-small button-quiet" id="driverLogoutBtn" type="button" style="color:#ffffff;background:rgba(255,255,255,0.15);">Logout</button>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">DRIVER WORKSPACE</p>
+      <a href="dashboard.html">Overview</a>
+      <a class="active" href="ride-requests.html">Ride requests</a>
+      <a href="vehicles.html">My vehicles</a>
+      <a href="earnings.html">Earnings</a>
+      <p class="nav-note">CabGo Driver Platform<br>Member 3 · Day 4</p>
+    </aside>
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">DRIVER WORKSPACE</p>
+          <h1>Ride requests & trip lifecycle</h1>
+          <p class="muted">Review incoming requests, accept rides, start journeys, and complete trips.</p>
+        </div>
+        <div class="availability-control">
+          <span id="dataModeBadge" class="mode-badge mode-mock">Demo Mode</span>
+          <span id="availabilityState" class="pill pill-success">Online</span>
+          <button id="availabilityBtn" class="button button-success" type="button">Go offline</button>
+        </div>
+      </div>
+
+      <section class="stats">
+        <article class="stat-card">
+          <span class="muted">Pending Requests</span>
+          <strong id="pendingCount">0</strong>
+          <small>Awaiting your response</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Active Rides</span>
+          <strong id="acceptedCount">0</strong>
+          <small>Accepted or In-Transit</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Completed Rides</span>
+          <strong id="completedCount">0</strong>
+          <small>Successfully delivered</small>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Ride request queue</h2>
+            <p class="muted">Actions update the system and trigger status transitions through the API.</p>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button id="refreshRequestsBtn" class="button button-quiet button-small" type="button">Refresh queue</button>
+            <button id="resetRequests" class="button button-quiet button-small" type="button">Reset demo</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Request ID</th>
+                <th>Passenger</th>
+                <th>Pickup</th>
+                <th>Destination</th>
+                <th>Vehicle Type</th>
+                <th>Estimate</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="requestsBody">
+              <!-- Dynamically populated by member3.js -->
+              <tr>
+                <td colspan="8">
+                  <div class="loading-state">
+                    <div class="spinner"></div>
+                    <span>Loading requests...</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p id="driverMessage" class="message" role="status" aria-live="polite">Choose Accept or Reject to manage incoming requests.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Driver ride lifecycle guide</h2>
+          <span class="pill pill-info">Day 4 Lifecycle Workflow</span>
+        </div>
+        <ol class="workflow">
+          <li>
+            <b>1.</b>
+            <div>
+              <strong>Receive request</strong>
+              <p class="muted">Passenger books a cab. Request displays pickup, destination, vehicle category, and estimated fare.</p>
+            </div>
+          </li>
+          <li>
+            <b>2.</b>
+            <div>
+              <strong>Accept or reject</strong>
+              <p class="muted">Accepting reserves the booking, marks driver as busy, and advances status to <em>Accepted</em>.</p>
+            </div>
+          </li>
+          <li>
+            <b>3.</b>
+            <div>
+              <strong>Start trip</strong>
+              <p class="muted">When arriving at the passenger's pickup location, click <em>Start Trip</em> to begin the active ride.</p>
+            </div>
+          </li>
+          <li>
+            <b>4.</b>
+            <div>
+              <strong>Complete trip & record fare</strong>
+              <p class="muted">Upon reaching the destination, complete the trip. The final fare is committed to earnings and trip history.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <footer>CabGo · Member 3 Day 4 · Driver Trip Lifecycle</footer>
+    </main>
+  </div>
+
+  <!-- In-Page Complete Trip Confirmation Modal -->
+  <div id="completeTripModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="completeModalTitle" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="completeModalTitle">Complete Trip</h3>
+        <button type="button" class="modal-close-btn" id="closeCompleteModalBtn" aria-label="Close modal">×</button>
+      </div>
+      <div class="modal-body">
+        <p>Confirm completion of trip <strong id="completeModalTripId">#--</strong>.</p>
+        <p class="muted" id="completeModalRoute">Route: Adyar → T. Nagar</p>
+        <label for="completeFinalFareInput" style="display:block;font-size:12px;font-weight:700;margin-top:14px;">Final Recorded Fare (₹):</label>
+        <div class="fare-input-wrap">
+          <span>₹</span>
+          <input type="number" id="completeFinalFareInput" step="0.5" min="10" max="10000" required>
+        </div>
+        <p class="muted" style="font-size:11px;margin-top:6px;">Pre-filled with the estimated fare. Adjust if there were route changes or waiting charges.</p>
+        <div id="completeModalError" class="message error" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="button button-quiet" id="cancelCompleteBtn">Cancel</button>
+        <button type="button" class="button button-success" id="confirmCompleteBtn">Confirm & Complete Trip</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -14,7 +14,17 @@ const API_CONFIG = {
         login: "/api/login",
         searchRides: "/api/rides/search",
         bookings: "/api/bookings",
-        cancelBooking: "/api/bookings/:request_id/cancel"
+        cancelBooking: "/api/bookings/:request_id/cancel",
+        // Driver endpoints (Member 3 - Day 4)
+        driverRequests: "/api/driver/requests",
+        driverAcceptRequest: "/api/driver/requests/:request_id/accept",
+        driverRejectRequest: "/api/driver/requests/:request_id/reject",
+        driverStartTrip: "/api/driver/trips/:trip_id/start",
+        driverCompleteTrip: "/api/driver/trips/:trip_id/complete",
+        driverVehicles: "/api/driver/vehicles",
+        driverVehicleItem: "/api/driver/vehicles/:vehicle_id",
+        driverEarnings: "/api/driver/earnings",
+        driverAvailability: "/api/driver/availability"
     },
     /**
      * Resolves the cancel booking endpoint path for a given request ID.
@@ -23,6 +33,21 @@ const API_CONFIG = {
      */
     getCancelBookingUrl(requestId) {
         return this.ENDPOINTS.cancelBooking.replace(":request_id", encodeURIComponent(requestId));
+    },
+    getDriverAcceptUrl(requestId) {
+        return this.ENDPOINTS.driverAcceptRequest.replace(":request_id", encodeURIComponent(requestId));
+    },
+    getDriverRejectUrl(requestId) {
+        return this.ENDPOINTS.driverRejectRequest.replace(":request_id", encodeURIComponent(requestId));
+    },
+    getDriverStartTripUrl(tripId) {
+        return this.ENDPOINTS.driverStartTrip.replace(":trip_id", encodeURIComponent(tripId));
+    },
+    getDriverCompleteTripUrl(tripId) {
+        return this.ENDPOINTS.driverCompleteTrip.replace(":trip_id", encodeURIComponent(tripId));
+    },
+    getDriverVehicleItemUrl(vehicleId) {
+        return this.ENDPOINTS.driverVehicleItem.replace(":vehicle_id", encodeURIComponent(vehicleId));
     }
 };
 
@@ -183,7 +208,7 @@ function getMockUsers() {
         console.error("Failed to parse mockUsers from localStorage:", err);
     }
 
-    // Default sample user for quick test login
+    // Default sample users for quick test login (passenger and driver)
     const defaultUsers = [
         {
             id: 1,
@@ -193,6 +218,16 @@ function getMockUsers() {
             email: "alex@example.com",
             password: "Password123",
             role: "passenger"
+        },
+        {
+            id: 102,
+            user_id: 102,
+            driver_id: 102,
+            name: "Arjun S.",
+            full_name: "Arjun S.",
+            email: "driver@example.com",
+            password: "Password123",
+            role: "driver"
         }
     ];
 
@@ -699,6 +734,712 @@ async function mockApiRequest(path, method, body) {
             data: {
                 message: "Booking cancelled successfully.",
                 booking: booking
+            }
+        };
+    }
+
+    /* ======================================================================
+       DRIVER MOCK ENDPOINTS (Member 3 - Day 4)
+       ====================================================================== */
+
+    const MOCK_DRIVER_REQUESTS_KEY = "cabgo_mock_driver_requests";
+    const MOCK_DRIVER_VEHICLES_KEY = "cabgo_mock_driver_vehicles";
+    const MOCK_DRIVER_TRIPS_KEY = "cabgo_mock_driver_completed_trips";
+    const MOCK_DRIVER_PROFILE_KEY = "cabgo_mock_driver_profile";
+
+    function getMockDriverRequests() {
+        try {
+            const raw = localStorage.getItem(MOCK_DRIVER_REQUESTS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {
+            console.error("Failed to parse mock driver requests:", e);
+        }
+
+        const defaults = [
+            {
+                request_id: 2041,
+                passenger_id: 101,
+                passenger_name: "Priya S.",
+                pickup_location: "Adyar",
+                drop_location: "T. Nagar",
+                vehicle_type: "standard",
+                estimated_fare: 320.00,
+                status: "requested",
+                created_at: new Date(Date.now() - 1000 * 60 * 14).toISOString()
+            },
+            {
+                request_id: 2042,
+                passenger_id: 102,
+                passenger_name: "Rahul M.",
+                pickup_location: "Guindy",
+                drop_location: "Velachery",
+                vehicle_type: "sedan",
+                estimated_fare: 210.00,
+                status: "requested",
+                created_at: new Date(Date.now() - 1000 * 60 * 6).toISOString()
+            }
+        ];
+
+        // Also check if any passenger booked rides in mock storage and import them
+        try {
+            const passengerBookingsRaw = localStorage.getItem("cabgo_bookings_user_1");
+            if (passengerBookingsRaw) {
+                const pBookings = JSON.parse(passengerBookingsRaw);
+                pBookings.forEach((b) => {
+                    if (!defaults.some((d) => String(d.request_id) === String(b.request_id))) {
+                        defaults.unshift({
+                            request_id: b.request_id,
+                            passenger_id: 1,
+                            passenger_name: "Alex",
+                            pickup_location: b.pickup_location,
+                            drop_location: b.drop_location,
+                            vehicle_type: b.vehicle_type || "standard",
+                            estimated_fare: b.estimated_fare,
+                            status: b.status || "requested",
+                            created_at: b.created_at || new Date().toISOString()
+                        });
+                    }
+                });
+            }
+        } catch (e) {
+            // ignore
+        }
+
+        try {
+            localStorage.setItem(MOCK_DRIVER_REQUESTS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+
+        return defaults;
+    }
+
+    function saveMockDriverRequests(requests) {
+        try {
+            localStorage.setItem(MOCK_DRIVER_REQUESTS_KEY, JSON.stringify(requests));
+        } catch (e) {
+            console.error("Failed to save mock driver requests:", e);
+        }
+    }
+
+    function getMockDriverVehicles() {
+        try {
+            const raw = localStorage.getItem(MOCK_DRIVER_VEHICLES_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {
+            console.error("Failed to parse mock driver vehicles:", e);
+        }
+
+        const defaults = [
+            {
+                vehicle_id: 1,
+                driver_id: 102,
+                registration_number: "TN 09 AB 1234",
+                vehicle_type: "standard",
+                model: "Maruti Swift",
+                capacity: 4,
+                approval_status: "approved",
+                is_active: true,
+                created_at: "2026-10-15T10:00:00.000Z"
+            },
+            {
+                vehicle_id: 2,
+                driver_id: 102,
+                registration_number: "TN 07 CD 5678",
+                vehicle_type: "sedan",
+                model: "Hyundai Verna",
+                capacity: 4,
+                approval_status: "pending",
+                is_active: true,
+                created_at: "2026-10-20T14:30:00.000Z"
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_DRIVER_VEHICLES_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+
+        return defaults;
+    }
+
+    function saveMockDriverVehicles(vehicles) {
+        try {
+            localStorage.setItem(MOCK_DRIVER_VEHICLES_KEY, JSON.stringify(vehicles));
+        } catch (e) {
+            console.error("Failed to save mock driver vehicles:", e);
+        }
+    }
+
+    function getMockDriverTrips() {
+        try {
+            const raw = localStorage.getItem(MOCK_DRIVER_TRIPS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {
+            console.error("Failed to parse mock driver trips:", e);
+        }
+
+        const defaults = [
+            {
+                trip_id: 1008,
+                request_id: 2038,
+                driver_id: 102,
+                passenger_name: "Suresh Kumar",
+                pickup_location: "Adyar",
+                drop_location: "T. Nagar",
+                vehicle_model: "Maruti Swift",
+                registration_number: "TN 09 AB 1234",
+                status: "completed",
+                final_fare: 280.00,
+                started_at: new Date(Date.now() - 1000 * 60 * 150).toISOString(),
+                completed_at: new Date(Date.now() - 1000 * 60 * 120).toISOString()
+            },
+            {
+                trip_id: 1007,
+                request_id: 2035,
+                driver_id: 102,
+                passenger_name: "Ananya Roy",
+                pickup_location: "Airport",
+                drop_location: "Nungambakkam",
+                vehicle_model: "Maruti Swift",
+                registration_number: "TN 09 AB 1234",
+                status: "completed",
+                final_fare: 360.00,
+                started_at: new Date(Date.now() - 1000 * 60 * 280).toISOString(),
+                completed_at: new Date(Date.now() - 1000 * 60 * 240).toISOString()
+            },
+            {
+                trip_id: 1006,
+                request_id: 2031,
+                driver_id: 102,
+                passenger_name: "Vikas Reddy",
+                pickup_location: "Egmore",
+                drop_location: "Anna Nagar",
+                vehicle_model: "Maruti Swift",
+                registration_number: "TN 09 AB 1234",
+                status: "completed",
+                final_fare: 240.00,
+                started_at: new Date(Date.now() - 1000 * 60 * 400).toISOString(),
+                completed_at: new Date(Date.now() - 1000 * 60 * 360).toISOString()
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_DRIVER_TRIPS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+
+        return defaults;
+    }
+
+    function saveMockDriverTrips(trips) {
+        try {
+            localStorage.setItem(MOCK_DRIVER_TRIPS_KEY, JSON.stringify(trips));
+        } catch (e) {
+            console.error("Failed to save mock driver trips:", e);
+        }
+    }
+
+    function getMockDriverProfile() {
+        try {
+            const raw = localStorage.getItem(MOCK_DRIVER_PROFILE_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+
+        const profile = {
+            driver_id: 102,
+            availability_status: "available",
+            rating: 4.80,
+            verification_status: "approved"
+        };
+        try {
+            localStorage.setItem(MOCK_DRIVER_PROFILE_KEY, JSON.stringify(profile));
+        } catch (e) {}
+        return profile;
+    }
+
+    function saveMockDriverProfile(p) {
+        try {
+            localStorage.setItem(MOCK_DRIVER_PROFILE_KEY, JSON.stringify(p));
+        } catch (e) {}
+    }
+
+    // 7. GET /api/driver/requests
+    if (path === API_CONFIG.ENDPOINTS.driverRequests && methodUpper === "GET") {
+        const requests = getMockDriverRequests();
+        const profile = getMockDriverProfile();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Driver requests retrieved successfully.",
+                requests: requests,
+                driver: profile
+            }
+        };
+    }
+
+    // 8. POST /api/driver/requests/:request_id/accept
+    const driverAcceptMatch = path.match(/^\/api\/driver\/requests\/([^/]+)\/accept$/);
+    if (driverAcceptMatch && methodUpper === "POST") {
+        const reqId = driverAcceptMatch[1];
+        const requests = getMockDriverRequests();
+        const reqItem = requests.find((r) => String(r.request_id) === String(reqId));
+
+        if (!reqItem) {
+            return {
+                ok: false,
+                status: 404,
+                data: {
+                    error: {
+                        code: "REQUEST_NOT_FOUND",
+                        message: "Ride request not found."
+                    }
+                }
+            };
+        }
+
+        if (reqItem.status !== "requested") {
+            return {
+                ok: false,
+                status: 409,
+                data: {
+                    error: {
+                        code: "INVALID_STATUS_TRANSITION",
+                        message: `Cannot accept request with status "${reqItem.status}". It must be in "requested" status.`
+                    }
+                }
+            };
+        }
+
+        reqItem.status = "accepted";
+        reqItem.accepted_at = new Date().toISOString();
+        reqItem.trip_id = reqItem.trip_id || (Math.floor(Date.now() / 1000) % 10000);
+        saveMockDriverRequests(requests);
+
+        // Update driver availability to on_trip
+        const profile = getMockDriverProfile();
+        profile.availability_status = "on_trip";
+        saveMockDriverProfile(profile);
+
+        // Synchronize with passenger bookings if present
+        try {
+            const pKey = "cabgo_bookings_user_1";
+            const pRaw = localStorage.getItem(pKey);
+            if (pRaw) {
+                const pBookings = JSON.parse(pRaw);
+                const pb = pBookings.find((b) => String(b.request_id) === String(reqId));
+                if (pb) {
+                    pb.status = "accepted";
+                    pb.driver = { full_name: "Arjun S.", rating: 4.80 };
+                    pb.vehicle = { registration_number: "TN 09 AB 1234", model: "Maruti Swift", vehicle_type: reqItem.vehicle_type || "standard" };
+                    localStorage.setItem(pKey, JSON.stringify(pBookings));
+                }
+            }
+        } catch (e) {}
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: `Request #${reqId} accepted successfully. You can now start the trip.`,
+                request: reqItem,
+                trip: {
+                    trip_id: reqItem.trip_id,
+                    request_id: reqItem.request_id,
+                    status: "accepted",
+                    started_at: null,
+                    completed_at: null
+                }
+            }
+        };
+    }
+
+    // 9. POST /api/driver/requests/:request_id/reject
+    const driverRejectMatch = path.match(/^\/api\/driver\/requests\/([^/]+)\/reject$/);
+    if (driverRejectMatch && methodUpper === "POST") {
+        const reqId = driverRejectMatch[1];
+        const requests = getMockDriverRequests();
+        const reqItem = requests.find((r) => String(r.request_id) === String(reqId));
+
+        if (!reqItem) {
+            return {
+                ok: false,
+                status: 404,
+                data: {
+                    error: {
+                        code: "REQUEST_NOT_FOUND",
+                        message: "Ride request not found."
+                    }
+                }
+            };
+        }
+
+        if (reqItem.status !== "requested") {
+            return {
+                ok: false,
+                status: 409,
+                data: {
+                    error: {
+                        code: "INVALID_STATUS_TRANSITION",
+                        message: `Cannot reject request with status "${reqItem.status}". It must be in "requested" status.`
+                    }
+                }
+            };
+        }
+
+        reqItem.status = "rejected";
+        saveMockDriverRequests(requests);
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: `Request #${reqId} was rejected.`,
+                request: reqItem
+            }
+        };
+    }
+
+    // 10. POST /api/driver/trips/:trip_id/start
+    const driverStartMatch = path.match(/^\/api\/driver\/trips\/([^/]+)\/start$/);
+    if (driverStartMatch && methodUpper === "POST") {
+        const tripOrReqId = driverStartMatch[1];
+        const requests = getMockDriverRequests();
+        const reqItem = requests.find((r) => String(r.trip_id) === String(tripOrReqId) || String(r.request_id) === String(tripOrReqId));
+
+        if (!reqItem) {
+            return {
+                ok: false,
+                status: 404,
+                data: {
+                    error: {
+                        code: "TRIP_NOT_FOUND",
+                        message: "Trip or ride request not found."
+                    }
+                }
+            };
+        }
+
+        if (reqItem.status !== "accepted") {
+            return {
+                ok: false,
+                status: 409,
+                data: {
+                    error: {
+                        code: "INVALID_STATUS_TRANSITION",
+                        message: `Cannot start trip with status "${reqItem.status}". Trip must be accepted first.`
+                    }
+                }
+            };
+        }
+
+        reqItem.status = "started";
+        reqItem.started_at = new Date().toISOString();
+        saveMockDriverRequests(requests);
+
+        // Synchronize with passenger bookings if present
+        try {
+            const pKey = "cabgo_bookings_user_1";
+            const pRaw = localStorage.getItem(pKey);
+            if (pRaw) {
+                const pBookings = JSON.parse(pRaw);
+                const pb = pBookings.find((b) => String(b.request_id) === String(reqItem.request_id));
+                if (pb) {
+                    pb.status = "started";
+                    localStorage.setItem(pKey, JSON.stringify(pBookings));
+                }
+            }
+        } catch (e) {}
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: `Trip #${reqItem.trip_id || reqItem.request_id} has started. Drive safely!`,
+                trip: {
+                    trip_id: reqItem.trip_id || reqItem.request_id,
+                    request_id: reqItem.request_id,
+                    status: "started",
+                    started_at: reqItem.started_at
+                }
+            }
+        };
+    }
+
+    // 11. POST /api/driver/trips/:trip_id/complete
+    const driverCompleteMatch = path.match(/^\/api\/driver\/trips\/([^/]+)\/complete$/);
+    if (driverCompleteMatch && methodUpper === "POST") {
+        const tripOrReqId = driverCompleteMatch[1];
+        const requests = getMockDriverRequests();
+        const reqItem = requests.find((r) => String(r.trip_id) === String(tripOrReqId) || String(r.request_id) === String(tripOrReqId));
+
+        if (!reqItem) {
+            return {
+                ok: false,
+                status: 404,
+                data: {
+                    error: {
+                        code: "TRIP_NOT_FOUND",
+                        message: "Trip or ride request not found."
+                    }
+                }
+            };
+        }
+
+        if (reqItem.status !== "started") {
+            return {
+                ok: false,
+                status: 409,
+                data: {
+                    error: {
+                        code: "INVALID_STATUS_TRANSITION",
+                        message: `Cannot complete trip with status "${reqItem.status}". Trip must be in "started" status.`
+                    }
+                }
+            };
+        }
+
+        const finalFare = body && body.final_fare !== undefined ? parseFloat(body.final_fare) : parseFloat(reqItem.estimated_fare);
+
+        reqItem.status = "completed";
+        reqItem.completed_at = new Date().toISOString();
+        reqItem.final_fare = finalFare;
+        saveMockDriverRequests(requests);
+
+        // Update driver availability back to available
+        const profile = getMockDriverProfile();
+        profile.availability_status = "available";
+        saveMockDriverProfile(profile);
+
+        // Record completed trip into driver trips
+        const trips = getMockDriverTrips();
+        const completedRecord = {
+            trip_id: reqItem.trip_id || (Math.floor(Date.now() / 1000) % 10000),
+            request_id: reqItem.request_id,
+            driver_id: 102,
+            passenger_name: reqItem.passenger_name || "Passenger",
+            pickup_location: reqItem.pickup_location,
+            drop_location: reqItem.drop_location,
+            vehicle_model: "Maruti Swift",
+            registration_number: "TN 09 AB 1234",
+            status: "completed",
+            final_fare: finalFare,
+            started_at: reqItem.started_at,
+            completed_at: reqItem.completed_at
+        };
+        trips.unshift(completedRecord);
+        saveMockDriverTrips(trips);
+
+        // Synchronize with passenger bookings if present
+        try {
+            const pKey = "cabgo_bookings_user_1";
+            const pRaw = localStorage.getItem(pKey);
+            if (pRaw) {
+                const pBookings = JSON.parse(pRaw);
+                const pb = pBookings.find((b) => String(b.request_id) === String(reqItem.request_id));
+                if (pb) {
+                    pb.status = "completed";
+                    pb.final_fare = finalFare;
+                    localStorage.setItem(pKey, JSON.stringify(pBookings));
+                }
+            }
+        } catch (e) {}
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: `Trip completed successfully. Recorded fare: ₹${finalFare.toFixed(2)}.`,
+                trip: completedRecord
+            }
+        };
+    }
+
+    // 12. GET /api/driver/vehicles
+    if (path === API_CONFIG.ENDPOINTS.driverVehicles && methodUpper === "GET") {
+        const vehicles = getMockDriverVehicles();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Vehicles retrieved successfully.",
+                vehicles: vehicles
+            }
+        };
+    }
+
+    // 13. POST /api/driver/vehicles (Add vehicle)
+    if (path === API_CONFIG.ENDPOINTS.driverVehicles && methodUpper === "POST") {
+        const regNum = body && body.registration_number ? String(body.registration_number).trim().toUpperCase() : "";
+        const vType = body && body.vehicle_type ? String(body.vehicle_type).trim().toLowerCase() : "";
+        const model = body && body.model ? String(body.model).trim() : "";
+        const capacity = body && body.capacity !== undefined ? parseInt(body.capacity, 10) : 0;
+
+        if (!regNum || !vType || !model || !capacity) {
+            return {
+                ok: false,
+                status: 400,
+                data: {
+                    error: {
+                        code: "INVALID_INPUT",
+                        message: "All fields are required (registration number, vehicle type, model, capacity)."
+                    }
+                }
+            };
+        }
+
+        if (!["standard", "sedan", "suv"].includes(vType)) {
+            return {
+                ok: false,
+                status: 400,
+                data: {
+                    error: {
+                        code: "INVALID_VEHICLE_TYPE",
+                        message: "Vehicle type must be 'standard', 'sedan', or 'suv'."
+                    }
+                }
+            };
+        }
+
+        if (isNaN(capacity) || capacity < 1 || capacity > 10) {
+            return {
+                ok: false,
+                status: 400,
+                data: {
+                    error: {
+                        code: "INVALID_CAPACITY",
+                        message: "Capacity must be a positive integer between 1 and 10."
+                    }
+                }
+            };
+        }
+
+        const vehicles = getMockDriverVehicles();
+        if (vehicles.some((v) => v.registration_number.replace(/\s+/g, "") === regNum.replace(/\s+/g, ""))) {
+            return {
+                ok: false,
+                status: 409,
+                data: {
+                    error: {
+                        code: "DUPLICATE_REGISTRATION",
+                        message: `A vehicle with registration number "${regNum}" already exists.`
+                    }
+                }
+            };
+        }
+
+        const newVehicle = {
+            vehicle_id: (Date.now() % 9000) + 1000,
+            driver_id: 102,
+            registration_number: regNum,
+            vehicle_type: vType,
+            model: model,
+            capacity: capacity,
+            approval_status: "pending",
+            is_active: true,
+            created_at: new Date().toISOString()
+        };
+
+        vehicles.push(newVehicle);
+        saveMockDriverVehicles(vehicles);
+
+        return {
+            ok: true,
+            status: 201,
+            data: {
+                message: "Vehicle added successfully. Status is pending administrator approval.",
+                vehicle: newVehicle
+            }
+        };
+    }
+
+    // 14. PUT /api/driver/vehicles/:vehicle_id (Edit vehicle)
+    const driverEditVehicleMatch = path.match(/^\/api\/driver\/vehicles\/([^/]+)$/);
+    if (driverEditVehicleMatch && (methodUpper === "PUT" || methodUpper === "PATCH")) {
+        const vId = driverEditVehicleMatch[1];
+        const vehicles = getMockDriverVehicles();
+        const targetVehicle = vehicles.find((v) => String(v.vehicle_id) === String(vId));
+
+        if (!targetVehicle) {
+            return {
+                ok: false,
+                status: 404,
+                data: {
+                    error: {
+                        code: "VEHICLE_NOT_FOUND",
+                        message: "Vehicle not found."
+                    }
+                }
+            };
+        }
+
+        if (body.model) targetVehicle.model = String(body.model).trim();
+        if (body.vehicle_type && ["standard", "sedan", "suv"].includes(String(body.vehicle_type).toLowerCase())) {
+            targetVehicle.vehicle_type = String(body.vehicle_type).toLowerCase();
+        }
+        if (body.capacity) {
+            const cap = parseInt(body.capacity, 10);
+            if (!isNaN(cap) && cap >= 1 && cap <= 10) {
+                targetVehicle.capacity = cap;
+            }
+        }
+        if (body.is_active !== undefined) {
+            targetVehicle.is_active = Boolean(body.is_active);
+        }
+
+        saveMockDriverVehicles(vehicles);
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Vehicle updated successfully.",
+                vehicle: targetVehicle
+            }
+        };
+    }
+
+    // 15. GET /api/driver/earnings
+    if (path === API_CONFIG.ENDPOINTS.driverEarnings && methodUpper === "GET") {
+        const trips = getMockDriverTrips();
+        const totalEarnings = trips.reduce((sum, t) => sum + (parseFloat(t.final_fare) || 0), 0);
+        const count = trips.length;
+        const avg = count > 0 ? totalEarnings / count : 0;
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Earnings summary retrieved successfully.",
+                earnings: {
+                    total_earnings: parseFloat(totalEarnings.toFixed(2)),
+                    completed_trips_count: count,
+                    average_fare: parseFloat(avg.toFixed(2)),
+                    trips: trips
+                }
+            }
+        };
+    }
+
+    // 16. PATCH /api/driver/availability
+    if (path === API_CONFIG.ENDPOINTS.driverAvailability && (methodUpper === "PATCH" || methodUpper === "POST")) {
+        const nextStatus = body && body.availability_status ? String(body.availability_status).trim().toLowerCase() : "available";
+        const profile = getMockDriverProfile();
+        profile.availability_status = ["available", "offline", "on_trip"].includes(nextStatus) ? nextStatus : "available";
+        saveMockDriverProfile(profile);
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: `Availability updated to ${profile.availability_status}.`,
+                availability_status: profile.availability_status
             }
         };
     }

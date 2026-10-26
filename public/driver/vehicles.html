@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vehicle Management | CabGo</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/api.js"></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="driver">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Driver Portal</span></a>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <span class="user-chip" id="driverUserChip">Arjun S. · DRV-102</span>
+      <button class="button button-small button-quiet" id="driverLogoutBtn" type="button" style="color:#ffffff;background:rgba(255,255,255,0.15);">Logout</button>
+    </div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">DRIVER WORKSPACE</p>
+      <a href="dashboard.html">Overview</a>
+      <a href="ride-requests.html">Ride requests</a>
+      <a class="active" href="vehicles.html">My vehicles</a>
+      <a href="earnings.html">Earnings</a>
+      <p class="nav-note">CabGo Driver Platform<br>Member 3 · Day 4</p>
+    </aside>
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">DRIVER WORKSPACE</p>
+          <h1>My registered vehicles</h1>
+          <p class="muted">View your fleet, register new cabs, and update vehicle specifications.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="dataModeBadge" class="mode-badge mode-mock">Demo Mode</span>
+          <button id="openAddVehicleBtn" class="button button-success" type="button">+ Add new vehicle</button>
+        </div>
+      </div>
+
+      <section class="stats">
+        <article class="stat-card">
+          <span class="muted">Total Vehicles</span>
+          <strong id="statTotalVehicles">0</strong>
+          <small>Registered to your account</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Approved Vehicles</span>
+          <strong id="statApprovedVehicles">0</strong>
+          <small>Eligible for passenger trips</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Under Review</span>
+          <strong id="statPendingVehicles">0</strong>
+          <small>Awaiting admin verification</small>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Registered vehicles list</h2>
+            <p class="muted">Only vehicles belonging to your driver account are displayed.</p>
+          </div>
+          <button id="refreshVehiclesBtn" class="button button-quiet button-small" type="button">Refresh list</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Registration No.</th>
+                <th>Category</th>
+                <th>Model</th>
+                <th>Capacity</th>
+                <th>Approval</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="vehiclesTableBody">
+              <!-- Dynamically populated by member3.js -->
+              <tr>
+                <td colspan="7">
+                  <div class="loading-state">
+                    <div class="spinner"></div>
+                    <span>Loading vehicles...</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p id="vehicleMessage" class="message" role="status" aria-live="polite">Manage your registered vehicles above.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Vehicle compliance policy</h2>
+          <span class="pill pill-info">Guidelines</span>
+        </div>
+        <p class="muted" style="line-height:1.6;font-size:12px;">
+          All commercial vehicles added to CabGo must comply with state transport department regulations. New vehicle submissions require administrative approval before they can accept customer bookings. Drivers may only register and edit vehicles under their own authenticated account.
+        </p>
+      </section>
+
+      <footer>CabGo · Member 3 Day 4 · Driver Vehicle Management</footer>
+    </main>
+  </div>
+
+  <!-- Add Vehicle Modal -->
+  <div id="addVehicleModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="addVehicleModalTitle" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="addVehicleModalTitle">Register New Vehicle</h3>
+        <button type="button" class="modal-close-btn" id="closeAddVehicleModalBtn" aria-label="Close modal">×</button>
+      </div>
+      <form id="addVehicleForm" novalidate>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="regNumberInput">Registration Number *</label>
+            <input type="text" id="regNumberInput" name="registration_number" placeholder="e.g. TN 09 AB 1234" required autocomplete="off">
+            <div class="field-error" id="regNumberError"></div>
+          </div>
+          <div class="form-group">
+            <label for="vehicleTypeSelect">Vehicle Category *</label>
+            <select id="vehicleTypeSelect" name="vehicle_type" required>
+              <option value="standard">Standard (Hatchback)</option>
+              <option value="sedan">Sedan (Comfort)</option>
+              <option value="suv">SUV (Large Capacity)</option>
+            </select>
+            <div class="field-error" id="vehicleTypeError"></div>
+          </div>
+          <div class="form-group">
+            <label for="modelInput">Make & Model *</label>
+            <input type="text" id="modelInput" name="model" placeholder="e.g. Maruti Suzuki Swift" required autocomplete="off">
+            <div class="field-error" id="modelError"></div>
+          </div>
+          <div class="form-group">
+            <label for="capacityInput">Passenger Seating Capacity *</label>
+            <input type="number" id="capacityInput" name="capacity" min="1" max="8" value="4" required>
+            <div class="field-hint">Maximum number of passengers excluding driver (1–8)</div>
+            <div class="field-error" id="capacityError"></div>
+          </div>
+          <div id="addVehicleFormMessage" class="message" hidden></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button button-quiet" id="cancelAddVehicleBtn">Cancel</button>
+          <button type="submit" class="button button-success" id="submitAddVehicleBtn">Save Vehicle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Vehicle Modal -->
+  <div id="editVehicleModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="editVehicleModalTitle" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="editVehicleModalTitle">Edit Vehicle Details</h3>
+        <button type="button" class="modal-close-btn" id="closeEditVehicleModalBtn" aria-label="Close modal">×</button>
+      </div>
+      <form id="editVehicleForm" novalidate>
+        <input type="hidden" id="editVehicleId">
+        <div class="modal-body">
+          <div class="form-group">
+            <label>Registration Number</label>
+            <input type="text" id="editRegNumberDisplay" disabled style="background:#f1f5f9;color:#64748b;cursor:not-allowed;">
+          </div>
+          <div class="form-group">
+            <label for="editVehicleTypeSelect">Vehicle Category *</label>
+            <select id="editVehicleTypeSelect" name="vehicle_type" required>
+              <option value="standard">Standard (Hatchback)</option>
+              <option value="sedan">Sedan (Comfort)</option>
+              <option value="suv">SUV (Large Capacity)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="editModelInput">Make & Model *</label>
+            <input type="text" id="editModelInput" name="model" required autocomplete="off">
+            <div class="field-error" id="editModelError"></div>
+          </div>
+          <div class="form-group">
+            <label for="editCapacityInput">Seating Capacity *</label>
+            <input type="number" id="editCapacityInput" name="capacity" min="1" max="8" required>
+            <div class="field-error" id="editCapacityError"></div>
+          </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px;margin-top:16px;">
+            <input type="checkbox" id="editIsActiveCheckbox" style="width:auto;margin:0;">
+            <label for="editIsActiveCheckbox" style="margin:0;cursor:pointer;">Active for ride requests</label>
+          </div>
+          <div id="editVehicleFormMessage" class="message" hidden></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="button button-quiet" id="cancelEditVehicleBtn">Cancel</button>
+          <button type="submit" class="button button-info" id="submitEditVehicleBtn">Update Vehicle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

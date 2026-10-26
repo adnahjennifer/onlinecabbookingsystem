@@ -5,32 +5,163 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Driver Dashboard | CabGo</title>
   <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/api.js"></script>
   <script src="../js/member3.js" defer></script>
-  <a href="ride-requests.html">Ride requests</a>
 </head>
 <body data-role="driver">
-  <header class="topbar"><a class="brand" href="dashboard.html">CabGo <span>Driver</span></a><div class="user-chip">Demo Driver · DRV-102</div></header>
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Driver Portal</span></a>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div class="user-chip" id="driverUserChip">Arjun S. · DRV-102</div>
+      <button class="button button-small button-quiet" id="driverLogoutBtn" type="button" style="color:#ffffff;background:rgba(255,255,255,0.15);">Logout</button>
+    </div>
+  </header>
   <div class="layout">
-    <aside class="sidebar"><p class="nav-label">WORKSPACE</p><a class="active" href="dashboard.html">Overview</a><a href="#requests">Ride requests</a><a href="#vehicle">My vehicle</a><a href="#earnings">Earnings</a><p class="nav-note">Day 1 prototype · Sample data</p></aside>
+    <aside class="sidebar">
+      <p class="nav-label">DRIVER WORKSPACE</p>
+      <a class="active" href="dashboard.html">Overview</a>
+      <a href="ride-requests.html">Ride requests</a>
+      <a href="vehicles.html">My vehicles</a>
+      <a href="earnings.html">Earnings</a>
+      <p class="nav-note">CabGo Driver Platform<br>Member 3 · Day 4</p>
+    </aside>
     <main class="main">
-      <div class="page-heading"><div><p class="eyebrow">DRIVER WORKSPACE</p><h1>Good evening, Arjun</h1><p class="muted">Here is your driving summary for today.</p></div><button id="availabilityBtn" class="button button-success">Go offline</button></div>
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">DRIVER WORKSPACE</p>
+          <h1 id="driverGreeting">Good day, Arjun</h1>
+          <p class="muted">Here is your live driving summary and assigned rides.</p>
+        </div>
+        <div class="availability-control">
+          <span id="dataModeBadge" class="mode-badge mode-mock">Demo Mode</span>
+          <span id="availabilityState" class="pill pill-success">Online</span>
+          <button id="availabilityBtn" class="button button-success" type="button">Go offline</button>
+        </div>
+      </div>
+
       <section class="stats">
-        <article class="stat-card"><span class="muted">Trips today</span><strong>08</strong><small>Sample statistic</small></article>
-        <article class="stat-card"><span class="muted">Today's earnings</span><strong>₹1,840</strong><small>Before adjustments</small></article>
-        <article class="stat-card"><span class="muted">Rating</span><strong>4.8 <span class="star">★</span></strong><small>Sample rating</small></article>
+        <article class="stat-card">
+          <span class="muted">Completed Trips</span>
+          <strong id="statCompletedTrips">3</strong>
+          <small id="statTripsSubtext">Recorded in trip history</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Total Earnings</span>
+          <strong id="statTotalEarnings">₹880.00</strong>
+          <small id="statEarningsSubtext">Completed trips fare</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Average Fare / Trip</span>
+          <strong id="statAvgFare">₹293.33</strong>
+          <small>Per completed ride</small>
+        </article>
+        <article class="stat-card">
+          <span class="muted">Driver Rating</span>
+          <strong id="statDriverRating">4.8 <span class="star">★</span></strong>
+          <small>Verification: Approved</small>
+        </article>
       </section>
-      <section class="panel" id="requests"><div class="panel-heading"><div><h2>Ride requests</h2><p class="muted">Demo interactions only; not connected to a server.</p></div><span class="pill pill-warning">2 pending</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Request</th><th>Pickup</th><th>Destination</th><th>Estimate</th><th>Status / action</th></tr></thead><tbody>
-          <tr><td>#RB-2041</td><td>Adyar</td><td>T. Nagar</td><td>₹320</td><td><span class="pill pill-warning">Pending</span><div class="actions"><button class="button button-small" data-action="accept">Accept</button><button class="button button-small button-quiet" data-action="reject">Reject</button></div></td></tr>
-          <tr><td>#RB-2042</td><td>Guindy</td><td>Velachery</td><td>₹210</td><td><span class="pill pill-warning">Pending</span><div class="actions"><button class="button button-small" data-action="accept">Accept</button><button class="button button-small button-quiet" data-action="reject">Reject</button></div></td></tr>
-        </tbody></table></div><p id="driverMessage" class="message" role="status">Choose an action to preview the driver workflow.</p>
+
+      <!-- Active / New Ride Requests Panel -->
+      <section class="panel" id="requests">
+        <div class="panel-heading">
+          <div>
+            <h2>Ride requests & trip lifecycle</h2>
+            <p class="muted">Manage incoming passenger rides, start ongoing trips, and record completed fares.</p>
+          </div>
+          <a class="button button-small" href="ride-requests.html">Open Full Requests Page →</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Request ID</th>
+                <th>Passenger</th>
+                <th>Pickup</th>
+                <th>Destination</th>
+                <th>Estimated Fare</th>
+                <th>Status</th>
+                <th>Trip Action</th>
+              </tr>
+            </thead>
+            <tbody id="overviewRequestsBody">
+              <!-- Dynamically populated by member3.js -->
+              <tr>
+                <td colspan="7">
+                  <div class="loading-state">
+                    <div class="spinner"></div>
+                    <span>Loading ride requests...</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="driverMessage" class="message" role="status" aria-live="polite">Ready. Review ride requests to accept or complete trips.</p>
       </section>
+
+      <!-- Vehicle and Earnings Summary Row -->
       <section class="two-col">
-        <article class="panel" id="vehicle"><div class="panel-heading"><h2>My vehicle</h2><span class="pill pill-success">Approved (demo)</span></div><dl class="details"><div><dt>Registration</dt><dd>TN 09 AB 1234</dd></div><div><dt>Vehicle</dt><dd>Hatchback · Maruti Swift</dd></div><div><dt>Capacity</dt><dd>4 passengers</dd></div></dl></article>
-        <article class="panel" id="earnings"><div class="panel-heading"><h2>Recent earnings</h2><a href="#earnings">View all</a></div><div class="earning-row"><span>Trip #TR-1008</span><strong>₹280</strong></div><div class="earning-row"><span>Trip #TR-1007</span><strong>₹360</strong></div><div class="earning-row"><span>Trip #TR-1006</span><strong>₹240</strong></div></article>
+        <!-- Vehicle Card -->
+        <article class="panel" id="vehicle">
+          <div class="panel-heading">
+            <h2>Primary vehicle</h2>
+            <a href="vehicles.html">Manage all vehicles →</a>
+          </div>
+          <div id="overviewVehicleContent">
+            <!-- Dynamically populated by member3.js -->
+            <dl class="details">
+              <div><dt>Registration</dt><dd id="ovVehicleReg">TN 09 AB 1234</dd></div>
+              <div><dt>Model & Type</dt><dd id="ovVehicleModel">Maruti Swift (Standard)</dd></div>
+              <div><dt>Capacity</dt><dd id="ovVehicleCap">4 passengers</dd></div>
+              <div><dt>Approval Status</dt><dd><span class="pill pill-success" id="ovVehicleStatus">Approved</span></dd></div>
+            </dl>
+          </div>
+        </article>
+
+        <!-- Earnings Quick Summary -->
+        <article class="panel" id="earnings">
+          <div class="panel-heading">
+            <h2>Recent earnings</h2>
+            <a href="earnings.html">View full statement →</a>
+          </div>
+          <div id="overviewEarningsRows">
+            <!-- Dynamically populated by member3.js -->
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <span>Loading earnings...</span>
+            </div>
+          </div>
+        </article>
       </section>
-      <footer>CabGo prototype · Driver dashboard · Data shown is fictional</footer>
+
+      <footer>CabGo · Driver Workspace · Online Cab Booking System</footer>
     </main>
+  </div>
+
+  <!-- In-Page Complete Trip Confirmation Modal -->
+  <div id="completeTripModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="completeModalTitle" hidden>
+    <div class="modal-panel">
+      <div class="modal-header">
+        <h3 id="completeModalTitle">Complete Trip</h3>
+        <button type="button" class="modal-close-btn" id="closeCompleteModalBtn" aria-label="Close modal">×</button>
+      </div>
+      <div class="modal-body">
+        <p>Confirm completion of trip <strong id="completeModalTripId">#--</strong>.</p>
+        <p class="muted" id="completeModalRoute">Route: Adyar → T. Nagar</p>
+        <label for="completeFinalFareInput" style="display:block;font-size:12px;font-weight:700;margin-top:14px;">Final Recorded Fare (₹):</label>
+        <div class="fare-input-wrap">
+          <span>₹</span>
+          <input type="number" id="completeFinalFareInput" step="0.5" min="10" max="10000" required>
+        </div>
+        <p class="muted" style="font-size:11px;margin-top:6px;">Pre-filled with the estimated fare. Adjust if there were route changes or waiting charges.</p>
+        <div id="completeModalError" class="message error" hidden></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="button button-quiet" id="cancelCompleteBtn">Cancel</button>
+        <button type="button" class="button button-success" id="confirmCompleteBtn">Confirm & Complete Trip</button>
+      </div>
+    </div>
   </div>
 </body>
 </html>
