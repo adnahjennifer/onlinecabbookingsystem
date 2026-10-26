@@ -357,9 +357,31 @@ function initRegistrationForm() {
                 }, 1500);
             } else {
                 // Server error handling (400, 409, 500, network error)
-                const errorMsg =
-                    (response.data && response.data.message) ||
-                    "Unable to create account. Please check your information and try again.";
+                const errorCode = response.data && response.data.error ? response.data.error.code : "";
+                let errorMsg = getErrorMessage(
+                    response.data,
+                    response.status === 0
+                        ? "Cannot reach the server. Please check your connection."
+                        : "Unable to create account. Please check your information and try again."
+                );
+
+                if (errorCode === "EMAIL_EXISTS") {
+                    errorMsg = "An account with this email already exists.";
+                    if (emailInput && emailError) {
+                        setFieldError(emailInput, emailError, errorMsg);
+                        emailInput.focus();
+                    }
+                } else if (errorCode === "WEAK_PASSWORD") {
+                    errorMsg = "Password must be at least 8 characters long.";
+                    if (passwordInput && passwordError) {
+                        setFieldError(passwordInput, passwordError, errorMsg);
+                        passwordInput.focus();
+                    }
+                } else if (errorCode === "INVALID_INPUT") {
+                    errorMsg = (response.data && response.data.error && response.data.error.message) ||
+                        "Please provide a valid name, email, and password.";
+                }
+
                 showMessage(formMessage, errorMsg, "error");
 
                 // Place field-specific errors if returned
@@ -494,14 +516,18 @@ function initLoginForm() {
                     window.location.href = redirectTarget;
                 }, 600);
             } else if (response.status === 401) {
-                // Do not reveal whether email exists
-                showMessage(formMessage, "Invalid email or password.", "error");
+                const errorMsg = (response.data && response.data.error && response.data.error.message) ||
+                    "Invalid email or password.";
+                showMessage(formMessage, errorMsg, "error");
                 passwordInput.value = "";
                 passwordInput.focus();
             } else {
-                const message =
-                    (response.data && response.data.message) ||
-                    "Login failed. Please check your connection and try again.";
+                const message = getErrorMessage(
+                    response.data,
+                    response.status === 0
+                        ? "Cannot reach the server. Please check your connection."
+                        : "Login failed. Please check your connection and try again."
+                );
                 showMessage(formMessage, message, "error");
             }
         } finally {
