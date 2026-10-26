@@ -4,12 +4,76 @@ const bcrypt = require('bcrypt');
 const pool = require('./db');
 const crypto = require('crypto');
 
+
 const PORT = 3000;
 // Temporary in-memory session store for development
 const sessions = new Map();
 
 const SESSION_COOKIE = 'cab_session';
 const SESSION_DURATION = 60 * 60 * 1000; // 1 hour
+
+
+function getSessionFromRequest(req) {
+    const cookies = req.headers.cookie || '';
+
+    const sessionCookie = cookies
+        .split(';')
+        .map(cookie => cookie.trim())
+        .find(cookie => cookie.startsWith(`${SESSION_COOKIE}=`));
+
+    if (!sessionCookie) {
+        return null;
+    }
+
+    const token = sessionCookie.substring(
+        SESSION_COOKIE.length + 1
+    );
+
+    const session = sessions.get(token);
+
+    if (!session || session.expiresAt <= Date.now()) {
+        sessions.delete(token);
+        return null;
+    }
+
+    return {
+        token,
+        userId: session.userId,
+        role: session.role
+    };
+}
+
+function requireRole(req, allowedRoles) {
+    const session = getSessionFromRequest(req);
+
+    if (!session) {
+        return {
+            ok: false,
+            status: 401,
+            error: {
+                code: 'UNAUTHENTICATED',
+                message: 'Please log in to continue.'
+            }
+        };
+    }
+
+    if (!allowedRoles.includes(session.role)) {
+        return {
+            ok: false,
+            status: 403,
+            error: {
+                code: 'FORBIDDEN',
+                message: 'You do not have permission to access this resource.'
+            }
+        };
+    }
+
+    return {
+        ok: true,
+        session
+    };
+}
+
 
 // Read and parse JSON request bodies
 function readRequestBody(req) {
@@ -403,9 +467,6 @@ const server = http.createServer(async (req, res) => {
 
         return;
     }
-
-
-
 
     // 4. Route not found
     res.writeHead(404);
