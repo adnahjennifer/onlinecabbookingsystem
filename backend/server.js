@@ -4,6 +4,9 @@ const bcrypt = require('bcrypt');
 const pool = require('./db');
 const crypto = require('crypto');
 
+const fs = require('fs');
+const path = require('path');
+
 
 const PORT = 3000;
 
@@ -101,6 +104,8 @@ function readRequestBody(req) {
         req.on('error', reject);
     });
 }
+
+
 
 const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -1245,16 +1250,28 @@ if (req.method === 'GET' && req.url === '/api/ride-requests/mine') {
                 return;
             }
 
-            // Sample values only; replace with actual trip measurements later.
-            const distanceKm = 10;
-            const durationMinutes = 20;
-            const rule = rules[0];
+            let finalFare;
+            try {
+                const bodyData = await readRequestBody(req);
+                if (bodyData && bodyData.final_fare !== undefined && bodyData.final_fare !== null) {
+                    finalFare = Number(parseFloat(bodyData.final_fare).toFixed(2));
+                }
+            } catch (e) {
+                // ignore body parsing errors and fall back to calculation
+            }
 
-            const finalFare = Number((
-                Number(rule.base_fare) +
-                distanceKm * Number(rule.per_km_rate) +
-                durationMinutes * Number(rule.per_minute_rate)
-            ).toFixed(2));
+            if (finalFare === undefined || isNaN(finalFare)) {
+                // Sample values only; replace with actual trip measurements later.
+                const distanceKm = 10;
+                const durationMinutes = 20;
+                const rule = rules[0];
+
+                finalFare = Number((
+                    Number(rule.base_fare) +
+                    distanceKm * Number(rule.per_km_rate) +
+                    durationMinutes * Number(rule.per_minute_rate)
+                ).toFixed(2));
+            }
 
             await connection.execute(
                 `UPDATE trips
@@ -1311,17 +1328,470 @@ if (req.method === 'GET' && req.url === '/api/ride-requests/mine') {
     }
 
 
+    // Driver: Get incoming ride requests
+    if (req.method === 'GET' && req.url === '/api/driver/requests') {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [drivers] = await pool.execute(
+                `SELECT driver_id, verification_status, availability_status, rating
+                 FROM driver_profiles
+                 WHERE user_id = ?`,
+                [auth.session.userId]
+            );
+
+            if (drivers.length === 0 || drivers[0].verification_status !== 'approved') {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'DRIVER_NOT_APPROVED',
+                        message: 'An approved driver profile is required.'
+                    }
+                }));
+                return;
+            }
+
+            const driver = drivers[0];
+
+            // Get pending ride requests that match driver's vehicles
+            const [vehicles] = await pool.execute(
+                `SELECT vehicle_type FROM vehicles 
+                 WHERE driver_id = ? AND approval_status = 'approved' AND is_active = TRUE`,
+                [driver.driver_id]
+            );
+
+            const vehicleTypes = [...new Set(vehicles.map(v => v.vehicle_type))];
+
+            let requests = [];
+            if (vehicleTypes.length > 0) {
+                const placeholders = vehicleTypes.map(() => '?').join(',');
+                const [rows] = await pool.execute(
+                    `SELECT rr.request_id, rr.passenger_id, rr.pickup_location, rr.drop_location,
+                            rr.vehicle_type, rr.estimated_fare, rr.status, rr.created_at,
+                            u.full_name as passenger_name,
+                            t.trip_id
+                     FROM ride_requests rr
+                     JOIN users u ON u.user_id = rr.passenger_id
+                     LEFT JOIN trips t ON t.request_id = rr.request_id AND t.driver_id = ?
+                     WHERE ((rr.status IN ('requested') AND rr.vehicle_type IN (${placeholders}))
+                        OR (t.driver_id = ? AND rr.status IN ('accepted', 'started')))
+                     ORDER BY rr.created_at ASC`,
+                    [driver.driver_id, ...vehicleTypes, driver.driver_id]
+                );
+                requests = rows;
+            } else {
+                const [rows] = await pool.execute(
+                    `SELECT rr.request_id, rr.passenger_id, rr.pickup_location, rr.drop_location,
+                            rr.vehicle_type, rr.estimated_fare, rr.status, rr.created_at,
+                            u.full_name as passenger_name,
+                            t.trip_id
+                     FROM ride_requests rr
+                     JOIN users u ON u.user_id = rr.passenger_id
+                     LEFT JOIN trips t ON t.request_id = rr.request_id AND t.driver_id = ?
+                     WHERE t.driver_id = ? AND rr.status IN ('accepted', 'started')
+                     ORDER BY rr.created_at ASC`,
+                    [driver.driver_id, driver.driver_id]
+                );
+                requests = rows;
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ requests, driver }));
+        } catch (error) {
+            console.error('Get driver requests error:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not retrieve ride requests.' } }));
+        }
+        return;
+    }
+
+
+    // Driver: Get vehicles
+    if (req.method === 'GET' && req.url === '/api/driver/vehicles') {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [drivers] = await pool.execute(
+                `SELECT driver_id FROM driver_profiles WHERE user_id = ?`,
+                [auth.session.userId]
+            );
+
+            if (drivers.length === 0) {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: { code: 'NO_DRIVER_PROFILE', message: 'Driver profile not found.' } }));
+                return;
+            }
+
+            const [vehicles] = await pool.execute(
+                `SELECT vehicle_id, driver_id, registration_number, vehicle_type, model, capacity, 
+                        approval_status, is_active, created_at
+                 FROM vehicles
+                 WHERE driver_id = ?
+                 ORDER BY created_at DESC`,
+                [drivers[0].driver_id]
+            );
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ vehicles }));
+        } catch (error) {
+            console.error('Get driver vehicles error:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not retrieve vehicles.' } }));
+        }
+        return;
+    }
+
+
+    // Driver: Add vehicle
+    if (req.method === 'POST' && req.url === '/api/driver/vehicles') {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body || '{}');
+                const registration_number = data.registration_number?.toString().trim().toUpperCase();
+                const vehicle_type = data.vehicle_type?.toString().trim().toLowerCase();
+                const model = data.model?.toString().trim();
+                const capacity = parseInt(data.capacity);
+
+                if (!registration_number || !vehicle_type || !model || isNaN(capacity)) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { code: 'INVALID_INPUT', message: 'All fields are required.' } }));
+                    return;
+                }
+
+                const [drivers] = await pool.execute(
+                    `SELECT driver_id FROM driver_profiles WHERE user_id = ?`,
+                    [auth.session.userId]
+                );
+
+                if (drivers.length === 0) {
+                    res.writeHead(403, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { code: 'NO_DRIVER_PROFILE', message: 'Driver profile not found.' } }));
+                    return;
+                }
+
+                const [result] = await pool.execute(
+                    `INSERT INTO vehicles (driver_id, registration_number, vehicle_type, model, capacity, approval_status, is_active)
+                     VALUES (?, ?, ?, ?, ?, 'pending', TRUE)`,
+                    [drivers[0].driver_id, registration_number, vehicle_type, model, capacity]
+                );
+
+                res.writeHead(201, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    message: 'Vehicle added successfully. Status is pending administrator approval.',
+                    vehicle: {
+                        vehicle_id: result.insertId,
+                        driver_id: drivers[0].driver_id,
+                        registration_number,
+                        vehicle_type,
+                        model,
+                        capacity,
+                        approval_status: 'pending',
+                        is_active: true
+                    }
+                }));
+            } catch (error) {
+                console.error('Add vehicle error:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not add vehicle.' } }));
+            }
+        });
+        return;
+    }
+
+
+    // Driver: Update vehicle
+    const driverUpdateVehicleMatch = req.url.match(/^\/api\/driver\/vehicles\/(\d+)$/);
+    if (req.method === 'PUT' && driverUpdateVehicleMatch) {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const vehicleId = Number(driverUpdateVehicleMatch[1]);
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body || '{}');
+                const [drivers] = await pool.execute(
+                    `SELECT driver_id FROM driver_profiles WHERE user_id = ?`,
+                    [auth.session.userId]
+                );
+
+                if (drivers.length === 0) {
+                    res.writeHead(403, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { code: 'NO_DRIVER_PROFILE', message: 'Driver profile not found.' } }));
+                    return;
+                }
+
+                const updates = [];
+                const values = [];
+                if (data.model) { updates.push('model = ?'); values.push(data.model.toString().trim()); }
+                if (data.vehicle_type) { updates.push('vehicle_type = ?'); values.push(data.vehicle_type.toString().trim().toLowerCase()); }
+                if (data.capacity) { updates.push('capacity = ?'); values.push(parseInt(data.capacity)); }
+                if (data.is_active !== undefined) { updates.push('is_active = ?'); values.push(data.is_active ? 1 : 0); }
+
+                if (updates.length === 0) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { code: 'NO_CHANGES', message: 'No fields to update.' } }));
+                    return;
+                }
+
+                values.push(vehicleId, drivers[0].driver_id);
+                await pool.execute(
+                    `UPDATE vehicles SET ${updates.join(', ')} WHERE vehicle_id = ? AND driver_id = ?`,
+                    values
+                );
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: 'Vehicle updated successfully.' }));
+            } catch (error) {
+                console.error('Update vehicle error:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not update vehicle.' } }));
+            }
+        });
+        return;
+    }
+
+
+    // Driver: Get earnings
+    if (req.method === 'GET' && req.url === '/api/driver/earnings') {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [drivers] = await pool.execute(
+                `SELECT driver_id FROM driver_profiles WHERE user_id = ?`,
+                [auth.session.userId]
+            );
+
+            if (drivers.length === 0) {
+                res.writeHead(403, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: { code: 'NO_DRIVER_PROFILE', message: 'Driver profile not found.' } }));
+                return;
+            }
+
+            const driverId = drivers[0].driver_id;
+
+            const [trips] = await pool.execute(
+                `SELECT t.trip_id, t.request_id, t.final_fare, t.started_at, t.completed_at,
+                        rr.pickup_location, rr.drop_location,
+                        u.full_name as passenger_name,
+                        v.model as vehicle_model, v.registration_number
+                 FROM trips t
+                 JOIN ride_requests rr ON rr.request_id = t.request_id
+                 JOIN users u ON u.user_id = rr.passenger_id
+                 LEFT JOIN vehicles v ON v.vehicle_id = t.vehicle_id
+                 WHERE t.driver_id = ? AND t.status = 'completed'
+                 ORDER BY t.completed_at DESC`,
+                [driverId]
+            );
+
+            const totalEarnings = trips.reduce((sum, t) => sum + parseFloat(t.final_fare || 0), 0);
+            const count = trips.length;
+            const avg = count > 0 ? totalEarnings / count : 0;
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+                earnings: {
+                    total_earnings: parseFloat(totalEarnings.toFixed(2)),
+                    completed_trips_count: count,
+                    average_fare: parseFloat(avg.toFixed(2)),
+                    trips
+                }
+            }));
+        } catch (error) {
+            console.error('Get driver earnings error:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not retrieve earnings.' } }));
+        }
+        return;
+    }
+
+
+    // Driver: Update availability
+    if (req.method === 'PATCH' && req.url === '/api/driver/availability') {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+            try {
+                const data = JSON.parse(body || '{}');
+                const availability_status = data.availability_status?.toString().trim().toLowerCase();
+
+                if (!['available', 'offline'].includes(availability_status)) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { code: 'INVALID_STATUS', message: 'Invalid availability status.' } }));
+                    return;
+                }
+
+                const [drivers] = await pool.execute(
+                    `SELECT driver_id FROM driver_profiles WHERE user_id = ?`,
+                    [auth.session.userId]
+                );
+
+                if (drivers.length === 0) {
+                    res.writeHead(403, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: { code: 'NO_DRIVER_PROFILE', message: 'Driver profile not found.' } }));
+                    return;
+                }
+
+                await pool.execute(
+                    `UPDATE driver_profiles SET availability_status = ? WHERE driver_id = ?`,
+                    [availability_status, drivers[0].driver_id]
+                );
+
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ message: `Availability updated to ${availability_status}.`, availability_status }));
+            } catch (error) {
+                console.error('Update availability error:', error);
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not update availability.' } }));
+            }
+        });
+        return;
+    }
+
+
+    // Driver: Reject request
+    const driverRejectMatch = req.url.match(/^\/api\/driver\/requests\/(\d+)\/reject$/);
+    if (req.method === 'POST' && driverRejectMatch) {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const requestId = Number(driverRejectMatch[1]);
+        try {
+            // Just mark as rejected/cancelled - in this system maybe just update
+            const [result] = await pool.execute(
+                `UPDATE ride_requests SET status = 'cancelled' WHERE request_id = ? AND status = 'requested'`,
+                [requestId]
+            );
+
+            if (result.affectedRows === 0) {
+                res.writeHead(409, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: { code: 'CANNOT_REJECT', message: 'Cannot reject this request.' } }));
+                return;
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ message: `Request #${requestId} was rejected.` }));
+        } catch (error) {
+            console.error('Reject request error:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not reject request.' } }));
+        }
+        return;
+    }
+
+
 
 
 
     // 4. Route not found
-    res.writeHead(404);
-    res.end(JSON.stringify({
-        error: {
-            code: 'NOT_FOUND',
-            message: 'Route not found'
+        // Serve frontend files from the public folder
+    const publicDir = path.resolve(__dirname, '..', 'public');
+
+    let requestedPath;
+
+    try {
+        requestedPath = decodeURIComponent(
+            new URL(req.url, 'http://localhost').pathname
+        );
+    } catch {
+        res.writeHead(400);
+        res.end('Bad Request');
+        return;
+    }
+
+    if (requestedPath === '/') {
+        requestedPath = '/index.html';
+    }
+
+    const actualPath = path.resolve(
+        publicDir,
+        '.' + requestedPath
+    );
+
+    if (
+        actualPath !== publicDir &&
+        !actualPath.startsWith(publicDir + path.sep)
+    ) {
+        res.writeHead(403);
+        res.end('Forbidden');
+        return;
+    }
+
+    fs.readFile(actualPath, (error, content) => {
+        if (error) {
+            res.writeHead(404, {
+                'Content-Type': 'text/plain; charset=utf-8'
+            });
+            res.end('File not found');
+            return;
         }
-    }));
+
+        const contentTypes = {
+            '.html': 'text/html; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.js': 'application/javascript; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.svg': 'image/svg+xml'
+        };
+
+        res.writeHead(200, {
+            'Content-Type':
+                contentTypes[path.extname(actualPath)] ||
+                'application/octet-stream'
+        });
+
+        res.end(content);
+    });
 });
 
 // Start server

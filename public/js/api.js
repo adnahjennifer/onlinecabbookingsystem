@@ -7,7 +7,7 @@
 "use strict";
 
 const API_CONFIG = {
-    USE_MOCK: true,
+    USE_MOCK: false,
     BASE_URL: "",
     ENDPOINTS: {
         register: "/api/register",
@@ -26,8 +26,8 @@ const API_CONFIG = {
         driverRequests: "/api/driver/requests",
         driverAcceptRequest: "/api/driver/requests/:request_id/accept",
         driverRejectRequest: "/api/driver/requests/:request_id/reject",
-        driverStartTrip: "/api/driver/trips/:trip_id/start",
-        driverCompleteTrip: "/api/driver/trips/:trip_id/complete",
+        driverStartTrip: "/api/trips/:trip_id/start",
+        driverCompleteTrip: "/api/trips/:trip_id/complete",
         driverVehicles: "/api/driver/vehicles",
         driverVehicleItem: "/api/driver/vehicles/:vehicle_id",
         driverEarnings: "/api/driver/earnings",
@@ -1125,8 +1125,8 @@ async function mockApiRequest(path, method, body) {
         };
     }
 
-    // 10. POST /api/driver/trips/:trip_id/start
-    const driverStartMatch = path.match(/^\/api\/driver\/trips\/([^/]+)\/start$/);
+    // 10. POST /api/trips/:trip_id/start
+    const driverStartMatch = path.match(/^\/api\/trips\/([^/]+)\/start$/);
     if (driverStartMatch && methodUpper === "POST") {
         const tripOrReqId = driverStartMatch[1];
         const requests = getMockDriverRequests();
@@ -1191,8 +1191,8 @@ async function mockApiRequest(path, method, body) {
         };
     }
 
-    // 11. POST /api/driver/trips/:trip_id/complete
-    const driverCompleteMatch = path.match(/^\/api\/driver\/trips\/([^/]+)\/complete$/);
+    // 11. POST /api/trips/:trip_id/complete
+    const driverCompleteMatch = path.match(/^\/api\/trips\/([^/]+)\/complete$/);
     if (driverCompleteMatch && methodUpper === "POST") {
         const tripOrReqId = driverCompleteMatch[1];
         const requests = getMockDriverRequests();
@@ -1548,9 +1548,10 @@ async function apiRequest(path, method = "GET", body = null) {
             };
         }
 
-        // Automatic seamless fallback to mock simulator when running on static servers (like python http.server returning 501)
-        // or when backend routes are not yet mounted (returning 404), or network is unavailable (status 0)
-        if (!result.ok && (result.status === 404 || result.status === 501 || result.status === 0)) {
+        // Automatic seamless fallback to mock simulator when the backend is not running (status 0 = network error)
+        // or returns 501 Not Implemented. Do NOT fall back on 404 — a real 404 means the route exists
+        // but the resource was not found (e.g. no pending requests), which is a valid API response.
+        if (!result.ok && (result.status === 501 || result.status === 0)) {
             console.warn(`[CabGo API] Endpoint ${method} ${path} returned HTTP ${result.status}. Falling back to mock simulation.`);
             result = await mockApiRequest(path, method, body);
         }
