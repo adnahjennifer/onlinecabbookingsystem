@@ -6,6 +6,7 @@ const crypto = require('crypto');
 
 
 const PORT = 3000;
+
 // Temporary in-memory session store for development
 const sessions = new Map();
 
@@ -735,72 +736,580 @@ if (req.method === 'GET' && req.url === '/api/ride-requests/mine') {
 
     
 
-    //cancel api
+            //cancel api
 
-const cancelRideMatch = req.url.match(
-    /^\/api\/ride-requests\/(\d+)\/cancel$/
-);
-
-if (req.method === 'POST' && cancelRideMatch) {
-    const auth = requireRole(req, ['passenger']);
-
-    if (!auth.ok) {
-        res.writeHead(auth.status, {
-            'Content-Type': 'application/json'
-        });
-        res.end(JSON.stringify({ error: auth.error }));
-        return;
-    }
-
-    try {
-        const requestId = Number(cancelRideMatch[1]);
-
-        const [result] = await pool.execute(
-            `UPDATE ride_requests
-             SET status = 'cancelled'
-             WHERE request_id = ?
-               AND passenger_id = ?
-               AND status = 'requested'`,
-            [requestId, auth.session.userId]
+        const cancelRideMatch = req.url.match(
+            /^\/api\/ride-requests\/(\d+)\/cancel$/
         );
 
-        if (result.affectedRows === 0) {
-            res.writeHead(404, {
+        if (req.method === 'POST' && cancelRideMatch) {
+            const auth = requireRole(req, ['passenger']);
+
+            if (!auth.ok) {
+                res.writeHead(auth.status, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({ error: auth.error }));
+                return;
+            }
+
+            try {
+                const requestId = Number(cancelRideMatch[1]);
+
+                const [result] = await pool.execute(
+                    `UPDATE ride_requests
+                    SET status = 'cancelled'
+                    WHERE request_id = ?
+                    AND passenger_id = ?
+                    AND status = 'requested'`,
+                    [requestId, auth.session.userId]
+                );
+
+                if (result.affectedRows === 0) {
+                    res.writeHead(404, {
+                        'Content-Type': 'application/json'
+                    });
+                    res.end(JSON.stringify({
+                        error: {
+                            code: 'REQUEST_NOT_FOUND_OR_NOT_CANCELLABLE',
+                            message: 'Ride request not found or cannot be cancelled.'
+                        }
+                    }));
+                    return;
+                }
+
+                res.writeHead(200, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    message: 'Ride request cancelled successfully.',
+                    request_id: requestId,
+                    status: 'cancelled'
+                }));
+            } catch (error) {
+                console.error('Cancel ride request error:', error);
+
+                res.writeHead(500, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'SERVER_ERROR',
+                        message: 'Could not cancel ride request.'
+                    }
+                }));
+            }
+
+            return;
+        }
+
+
+        // Driver accepts a passenger ride request
+        const acceptRideMatch = req.url.match(
+            /^\/api\/driver\/requests\/(\d+)\/accept$/
+        );
+
+        if (req.method === 'POST' && acceptRideMatch) {
+            const auth = requireRole(req, ['driver']);
+
+            if (!auth.ok) {
+                res.writeHead(auth.status, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({ error: auth.error }));
+                return;
+            }
+
+            const requestId = Number(acceptRideMatch[1]);
+            const connection = await pool.getConnection();
+
+            try {
+                await connection.beginTransaction();
+
+                // Find the driver's profile and lock it during acceptance
+                const [drivers] = await connection.execute(
+                    `SELECT driver_id, verification_status, availability_status
+                    FROM driver_profiles
+                    WHERE user_id = ?
+                    FOR UPDATE`,
+                    [auth.session.userId]
+                );
+
+                if (
+                    drivers.length === 0 ||
+                    drivers[0].verification_status !== 'approved'
+                ) {
+                    await connection.rollback();
+                    res.writeHead(403, {
+                        'Content-Type': 'application/json'
+                    });
+                    res.end(JSON.stringify({
+                        error: {
+                            code: 'DRIVER_NOT_APPROVED',
+                            message: 'An approved driver profile is required.'
+                        }
+                    }));
+                    return;
+                }
+
+                const driver = drivers[0];
+
+                if (driver.availability_status !== 'available') {
+                    await connection.rollback();
+                    res.writeHead(409, {
+                        'Content-Type': 'application/json'
+                    });
+                    res.end(JSON.stringify({
+                        error: {
+                            code: 'DRIVER_NOT_AVAILABLE',
+                            message: 'You must be available to accept a ride.'
+                        }
+                    }));
+                    return;
+                }
+
+                // Ensure this driver has no accepted or started trip
+                const [activeTrips] = await connection.execute(
+                    `SELECT trip_id
+                    FROM trips
+                    WHERE driver_id = ?
+                    AND status IN ('accepted', 'started')
+                    LIMIT 1
+                    FOR UPDATE`,
+                    [driver.driver_id]
+                );
+
+                if (activeTrips.length > 0) {
+                    await connection.rollback();
+                    res.writeHead(409, {
+                        'Content-Type': 'application/json'
+                    });
+                    res.end(JSON.stringify({
+                        error: {
+                            code: 'ACTIVE_TRIP_EXISTS',
+                            message: 'Complete your active trip before accepting another.'
+                        }
+                    }));
+                    return;
+                }
+
+                // Lock the ride request so two drivers cannot accept it
+                const [requests] = await connection.execute(
+                    `SELECT request_id, vehicle_type, status
+                    FROM ride_requests
+                    WHERE request_id = ?
+                    FOR UPDATE`,
+                    [requestId]
+                );
+
+                if (
+                    requests.length === 0 ||
+                    requests[0].status !== 'requested'
+                ) {
+                    await connection.rollback();
+                    res.writeHead(409, {
+                        'Content-Type': 'application/json'
+                    });
+                    res.end(JSON.stringify({
+                        error: {
+                            code: 'RIDE_NOT_AVAILABLE',
+                            message: 'This ride request does not exist or has already been accepted.'
+                        }
+                    }));
+                    return;
+                }
+
+            const ride = requests[0];
+
+            // Find an approved, active vehicle matching the requested type
+            const [vehicles] = await connection.execute(
+                `SELECT vehicle_id
+                 FROM vehicles
+                 WHERE driver_id = ?
+                   AND vehicle_type = ?
+                   AND approval_status = 'approved'
+                   AND is_active = TRUE
+                 LIMIT 1
+                 FOR UPDATE`,
+                [driver.driver_id, ride.vehicle_type]
+            );
+
+            if (vehicles.length === 0) {
+                await connection.rollback();
+                res.writeHead(409, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'NO_ELIGIBLE_VEHICLE',
+                        message: 'No approved active vehicle matches this ride.'
+                    }
+                }));
+                return;
+            }
+
+            const vehicleId = vehicles[0].vehicle_id;
+
+            // Create the trip
+            const [tripResult] = await connection.execute(
+                `INSERT INTO trips (request_id, driver_id, vehicle_id, status)
+                 VALUES (?, ?, ?, 'accepted')`,
+                [requestId, driver.driver_id, vehicleId]
+            );
+
+            // Update the passenger's ride request
+            await connection.execute(
+                `UPDATE ride_requests
+                 SET status = 'accepted'
+                 WHERE request_id = ? AND status = 'requested'`,
+                [requestId]
+            );
+
+            // Mark the driver as on a trip
+            await connection.execute(
+                `UPDATE driver_profiles
+                 SET availability_status = 'on_trip'
+                 WHERE driver_id = ?`,
+                [driver.driver_id]
+            );
+
+            await connection.commit();
+
+            res.writeHead(201, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({
+                message: 'Ride accepted successfully.',
+                trip: {
+                    trip_id: tripResult.insertId,
+                    request_id: requestId,
+                    driver_id: driver.driver_id,
+                    vehicle_id: vehicleId,
+                    status: 'accepted'
+                }
+            }));
+        } catch (error) {
+            await connection.rollback();
+            console.error('Accept ride error:', error);
+
+            res.writeHead(500, {
                 'Content-Type': 'application/json'
             });
             res.end(JSON.stringify({
                 error: {
-                    code: 'REQUEST_NOT_FOUND_OR_NOT_CANCELLABLE',
-                    message: 'Ride request not found or cannot be cancelled.'
+                    code: 'SERVER_ERROR',
+                    message: 'Could not accept the ride request.'
                 }
             }));
+        } finally {
+            connection.release();
+        }
+
+        return;
+    }
+
+
+    // Driver starts an accepted trip
+    const startTripMatch = req.url.match(
+        /^\/api\/trips\/(\d+)\/start$/
+    );
+
+    if (req.method === 'POST' && startTripMatch) {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({ error: auth.error }));
             return;
         }
 
-        res.writeHead(200, {
-            'Content-Type': 'application/json'
-        });
-        res.end(JSON.stringify({
-            message: 'Ride request cancelled successfully.',
-            request_id: requestId,
-            status: 'cancelled'
-        }));
-    } catch (error) {
-        console.error('Cancel ride request error:', error);
+        const tripId = Number(startTripMatch[1]);
+        const connection = await pool.getConnection();
 
-        res.writeHead(500, {
-            'Content-Type': 'application/json'
-        });
-        res.end(JSON.stringify({
-            error: {
-                code: 'SERVER_ERROR',
-                message: 'Could not cancel ride request.'
+        try {
+            await connection.beginTransaction();
+
+            const [drivers] = await connection.execute(
+                `SELECT driver_id
+                 FROM driver_profiles
+                 WHERE user_id = ?
+                   AND verification_status = 'approved'
+                 FOR UPDATE`,
+                [auth.session.userId]
+            );
+
+            if (drivers.length === 0) {
+                await connection.rollback();
+                res.writeHead(403, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'DRIVER_NOT_APPROVED',
+                        message: 'An approved driver profile is required.'
+                    }
+                }));
+                return;
             }
-        }));
+
+            const driverId = drivers[0].driver_id;
+
+            const [trips] = await connection.execute(
+                `SELECT trip_id, request_id, status
+                 FROM trips
+                 WHERE trip_id = ? AND driver_id = ?
+                 FOR UPDATE`,
+                [tripId, driverId]
+            );
+
+            if (trips.length === 0) {
+                await connection.rollback();
+                res.writeHead(404, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'TRIP_NOT_FOUND',
+                        message: 'Trip not found for this driver.'
+                    }
+                }));
+                return;
+            }
+
+            if (trips[0].status !== 'accepted') {
+                await connection.rollback();
+                res.writeHead(409, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'TRIP_NOT_STARTABLE',
+                        message: 'Only an accepted trip can be started.'
+                    }
+                }));
+                return;
+            }
+
+            await connection.execute(
+                `UPDATE trips
+                 SET status = 'started', started_at = NOW()
+                 WHERE trip_id = ?`,
+                [tripId]
+            );
+
+            await connection.execute(
+                `UPDATE ride_requests
+                 SET status = 'started'
+                 WHERE request_id = ?`,
+                [trips[0].request_id]
+            );
+
+            await connection.commit();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({
+                message: 'Trip started successfully.',
+                trip_id: tripId,
+                status: 'started'
+            }));
+        } catch (error) {
+            await connection.rollback();
+            console.error('Start trip error:', error);
+
+            res.writeHead(500, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Could not start the trip.'
+                }
+            }));
+        } finally {
+            connection.release();
+        }
+
+        return;
     }
 
-    return;
-}
+
+    // Driver completes a started trip
+    const completeTripMatch = req.url.match(
+        /^\/api\/trips\/(\d+)\/complete$/
+    );
+
+    if (req.method === 'POST' && completeTripMatch) {
+        const auth = requireRole(req, ['driver']);
+
+        if (!auth.ok) {
+            res.writeHead(auth.status, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const tripId = Number(completeTripMatch[1]);
+        const connection = await pool.getConnection();
+
+        try {
+            await connection.beginTransaction();
+
+            const [drivers] = await connection.execute(
+                `SELECT driver_id
+                 FROM driver_profiles
+                 WHERE user_id = ?
+                   AND verification_status = 'approved'
+                 FOR UPDATE`,
+                [auth.session.userId]
+            );
+
+            if (drivers.length === 0) {
+                await connection.rollback();
+                res.writeHead(403, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'DRIVER_NOT_APPROVED',
+                        message: 'An approved driver profile is required.'
+                    }
+                }));
+                return;
+            }
+
+            const driverId = drivers[0].driver_id;
+
+            const [trips] = await connection.execute(
+                `SELECT t.trip_id, t.request_id, t.status,
+                        r.vehicle_type
+                 FROM trips t
+                 JOIN ride_requests r ON r.request_id = t.request_id
+                 WHERE t.trip_id = ? AND t.driver_id = ?
+                 FOR UPDATE`,
+                [tripId, driverId]
+            );
+
+            if (trips.length === 0) {
+                await connection.rollback();
+                res.writeHead(404, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'TRIP_NOT_FOUND',
+                        message: 'Trip not found for this driver.'
+                    }
+                }));
+                return;
+            }
+
+            const trip = trips[0];
+
+            if (trip.status !== 'started') {
+                await connection.rollback();
+                res.writeHead(409, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'TRIP_NOT_COMPLETABLE',
+                        message: 'Only a started trip can be completed.'
+                    }
+                }));
+                return;
+            }
+
+            const [rules] = await connection.execute(
+                `SELECT base_fare, per_km_rate, per_minute_rate
+                 FROM fare_rules
+                 WHERE vehicle_type = ? AND is_active = TRUE`,
+                [trip.vehicle_type]
+            );
+
+            if (rules.length === 0) {
+                await connection.rollback();
+                res.writeHead(409, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify({
+                    error: {
+                        code: 'FARE_RULE_NOT_FOUND',
+                        message: 'No active fare rule exists for this vehicle type.'
+                    }
+                }));
+                return;
+            }
+
+            // Sample values only; replace with actual trip measurements later.
+            const distanceKm = 10;
+            const durationMinutes = 20;
+            const rule = rules[0];
+
+            const finalFare = Number((
+                Number(rule.base_fare) +
+                distanceKm * Number(rule.per_km_rate) +
+                durationMinutes * Number(rule.per_minute_rate)
+            ).toFixed(2));
+
+            await connection.execute(
+                `UPDATE trips
+                 SET status = 'completed',
+                     completed_at = NOW(),
+                     final_fare = ?
+                 WHERE trip_id = ?`,
+                [finalFare, tripId]
+            );
+
+            await connection.execute(
+                `UPDATE ride_requests
+                 SET status = 'completed'
+                 WHERE request_id = ?`,
+                [trip.request_id]
+            );
+
+            await connection.execute(
+                `UPDATE driver_profiles
+                 SET availability_status = 'available'
+                 WHERE driver_id = ?`,
+                [driverId]
+            );
+
+            await connection.commit();
+
+            res.writeHead(200, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({
+                message: 'Trip completed successfully.',
+                trip_id: tripId,
+                status: 'completed',
+                final_fare: finalFare
+            }));
+        } catch (error) {
+            await connection.rollback();
+            console.error('Complete trip error:', error);
+
+            res.writeHead(500, {
+                'Content-Type': 'application/json'
+            });
+            res.end(JSON.stringify({
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Could not complete the trip.'
+                }
+            }));
+        } finally {
+            connection.release();
+        }
+
+        return;
+    }
+
 
 
 
