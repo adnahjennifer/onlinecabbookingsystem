@@ -233,6 +233,20 @@ function getMockUsers() {
         modified = true;
     }
 
+    // Secondary sample passenger for quick test login
+    if (!users.some((u) => u.email && u.email.toLowerCase() === "passenger@example.com")) {
+        users.push({
+            id: 2,
+            user_id: 2,
+            name: "Passenger",
+            full_name: "Passenger User",
+            email: "passenger@example.com",
+            password: "Password123",
+            role: "passenger"
+        });
+        modified = true;
+    }
+
     // Default sample driver for quick test login
     if (!users.some((u) => u.email && u.email.toLowerCase() === "driver@example.com")) {
         users.push({
@@ -480,6 +494,56 @@ async function mockApiRequest(path, method, body) {
         };
     }
 
+    // 2b. Mock Session Verification (/api/me)
+    if ((path === API_CONFIG.ENDPOINTS.me || path === "/api/me") && methodUpper === "GET") {
+        const session = getSession();
+        if (!session || !session.user) {
+            return {
+                ok: false,
+                status: 401,
+                data: {
+                    error: {
+                        code: "UNAUTHENTICATED",
+                        message: "Please log in to continue."
+                    }
+                }
+            };
+        }
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                user: session.user
+            }
+        };
+    }
+
+    // 2c. Mock Fare Estimation (/api/fare/estimate)
+    if ((path === API_CONFIG.ENDPOINTS.fareEstimate || path === "/api/fare/estimate") && methodUpper === "POST") {
+        const vType = (body && body.vehicle_type ? String(body.vehicle_type).toLowerCase() : "standard");
+        const distanceKm = (body && typeof body.distance_km === "number" ? body.distance_km : 10);
+        const durationMinutes = (body && typeof body.duration_minutes === "number" ? body.duration_minutes : 20);
+
+        const rates = {
+            standard: { base: 40, perKm: 10, perMin: 1 },
+            sedan: { base: 60, perKm: 13, perMin: 1.5 },
+            suv: { base: 90, perKm: 18, perMin: 2 }
+        };
+        const rule = rates[vType] || rates.standard;
+        const estimatedFare = Number((rule.base + (distanceKm * rule.perKm) + (durationMinutes * rule.perMin)).toFixed(2));
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                vehicle_type: vType,
+                distance_km: distanceKm,
+                duration_minutes: durationMinutes,
+                estimated_fare: estimatedFare
+            }
+        };
+    }
+
     // 3. Mock Cab Search (/api/rides/search)
     if (path === API_CONFIG.ENDPOINTS.searchRides && methodUpper === "POST") {
         const pickup = body && body.pickup_location ? String(body.pickup_location).trim() : "";
@@ -586,8 +650,8 @@ async function mockApiRequest(path, method, body) {
         };
     }
 
-    // 4. Mock Create Booking (POST /api/bookings)
-    if (path === API_CONFIG.ENDPOINTS.bookings && methodUpper === "POST") {
+    // 4. Mock Create Booking (POST /api/ride-requests or POST /api/bookings)
+    if ((path === API_CONFIG.ENDPOINTS.rideRequests || path === API_CONFIG.ENDPOINTS.bookings || path === "/api/ride-requests") && methodUpper === "POST") {
         const session = getSession();
         if (!session || !session.user) {
             return {
@@ -626,13 +690,18 @@ async function mockApiRequest(path, method, body) {
 
         const requestId = (Date.now() % 90000) + 10000;
         const createdAt = new Date().toISOString();
-        const estimatedFare = body && body.estimated_fare !== undefined ? parseFloat(body.estimated_fare) : 0;
+        const vType = body && body.vehicle_type ? String(body.vehicle_type).trim().toLowerCase() : "standard";
+        let estimatedFare = body && body.estimated_fare !== undefined ? parseFloat(body.estimated_fare) : 0;
+        if (!estimatedFare) {
+            const fallbackFares = { standard: 160.00, sedan: 220.00, suv: 310.00 };
+            estimatedFare = fallbackFares[vType] || 160.00;
+        }
 
         const newBooking = {
             request_id: requestId,
             pickup_location: body && body.pickup_location ? String(body.pickup_location).trim() : "",
             drop_location: body && body.drop_location ? String(body.drop_location).trim() : "",
-            vehicle_type: body && body.vehicle_type ? String(body.vehicle_type).trim().toLowerCase() : "standard",
+            vehicle_type: vType,
             estimated_fare: estimatedFare,
             final_fare: null,
             status: "requested",
@@ -649,21 +718,14 @@ async function mockApiRequest(path, method, body) {
             status: 201,
             data: {
                 message: "Booking confirmed! Searching for nearby drivers...",
-                booking: {
-                    request_id: newBooking.request_id,
-                    pickup_location: newBooking.pickup_location,
-                    drop_location: newBooking.drop_location,
-                    vehicle_type: newBooking.vehicle_type,
-                    estimated_fare: newBooking.estimated_fare,
-                    status: newBooking.status,
-                    created_at: newBooking.created_at
-                }
+                request: newBooking,
+                booking: newBooking
             }
         };
     }
 
-    // 5. Mock Get Bookings (GET /api/bookings)
-    if (path === API_CONFIG.ENDPOINTS.bookings && methodUpper === "GET") {
+    // 5. Mock Get Bookings (GET /api/ride-requests/mine or GET /api/bookings)
+    if ((path === API_CONFIG.ENDPOINTS.myRideRequests || path === API_CONFIG.ENDPOINTS.bookings || path === "/api/ride-requests/mine") && methodUpper === "GET") {
         const session = getSession();
         if (!session || !session.user) {
             return {
@@ -689,13 +751,14 @@ async function mockApiRequest(path, method, body) {
             ok: true,
             status: 200,
             data: {
+                requests: bookings,
                 bookings: bookings
             }
         };
     }
 
-    // 6. Mock Cancel Booking (POST /api/bookings/:request_id/cancel)
-    const cancelMatch = path.match(/^\/api\/bookings\/([^/]+)\/cancel$/);
+    // 6. Mock Cancel Booking (POST /api/ride-requests/:request_id/cancel or /api/bookings/:request_id/cancel)
+    const cancelMatch = path.match(/^\/api\/(?:ride-requests|bookings)\/([^/]+)\/cancel$/);
     if (cancelMatch && methodUpper === "POST") {
         const session = getSession();
         if (!session || !session.user) {
@@ -752,6 +815,8 @@ async function mockApiRequest(path, method, body) {
             status: 200,
             data: {
                 message: "Booking cancelled successfully.",
+                request_id: booking.request_id,
+                status: "cancelled",
                 booking: booking
             }
         };
@@ -1548,10 +1613,10 @@ async function apiRequest(path, method = "GET", body = null) {
             };
         }
 
-        // Automatic seamless fallback to mock simulator when the backend is not running (status 0 = network error)
-        // or returns 501 Not Implemented. Do NOT fall back on 404 — a real 404 means the route exists
-        // but the resource was not found (e.g. no pending requests), which is a valid API response.
-        if (!result.ok && (result.status === 501 || result.status === 0)) {
+        // Automatic seamless fallback to mock simulator when the backend is not running (status 0 = network error),
+        // returns 501 Not Implemented, or returns 500 Internal Server Error (e.g. database down, unconfigured, or connection error).
+        // Do NOT fall back on 404 — a real 404 means the route exists but the resource was not found.
+        if (!result.ok && (result.status === 500 || result.status === 501 || result.status === 0)) {
             console.warn(`[CabGo API] Endpoint ${method} ${path} returned HTTP ${result.status}. Falling back to mock simulation.`);
             result = await mockApiRequest(path, method, body);
         }
