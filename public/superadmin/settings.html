@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System Settings | CabGo Super Admin</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/api.js" defer></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="superadmin" data-page="superadmin-settings">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Super Admin</span></a>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span class="user-chip">System Owner · SA-01</span>
+      <a href="../login.html" class="top-link" id="superLogoutBtn">Logout</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">SYSTEM GOVERNANCE</p>
+      <a href="dashboard.html">Overview</a>
+      <a href="admins.html">Administrators</a>
+      <a href="permissions.html">Permissions</a>
+      <a class="active" href="settings.html">System Settings</a>
+      <a href="logs.html">System Logs</a>
+      <p class="nav-note">Member 3 · Super Admin Panel</p>
+    </aside>
+
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">SYSTEM CONFIGURATION</p>
+          <h1>Platform Governance & Settings</h1>
+          <p class="muted">Manage global runtime parameters, platform commission rate, and maintenance modes.</p>
+        </div>
+        <span class="mode-badge" id="dataModeBadge">Checking mode...</span>
+      </div>
+
+      <div id="settingsPageMessage" class="message" style="margin-bottom: 20px;" hidden></div>
+
+      <div style="max-width: 700px;">
+        <form id="settingsForm" class="panel">
+          <div class="panel-heading">
+            <h2>General Parameters</h2>
+          </div>
+
+          <div class="form-group">
+            <label for="settingPlatformName">Platform Application Name</label>
+            <input type="text" id="settingPlatformName" required>
+            <p class="field-hint">The displayed service name across passenger and driver portals.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="settingCommission">Platform Commission Rate (%)</label>
+            <input type="number" id="settingCommission" min="0" max="50" step="1" required>
+            <p class="field-hint">Percentage retained by platform on each completed trip (default: 15%).</p>
+          </div>
+
+          <div class="form-group">
+            <label for="settingRadius">Maximum Driver Search Radius (km)</label>
+            <input type="number" id="settingRadius" min="1" max="50" step="1" required>
+            <p class="field-hint">Radial distance to match available drivers with incoming ride requests.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="settingSupportEmail">Support & Contact Email</label>
+            <input type="email" id="settingSupportEmail" required>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid #edf0f5; margin: 20px 0;">
+
+          <div class="panel-heading">
+            <h2>System Mode Flags</h2>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <strong>Passenger Bookings Enabled</strong>
+              <p class="muted">When disabled, passengers cannot submit new cab booking requests.</p>
+            </div>
+            <input type="checkbox" id="settingBookingEnabled" checked style="width: 20px; height: 20px;">
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <strong>Emergency Maintenance Mode</strong>
+              <p class="muted">Restricts application access solely to super administrators.</p>
+            </div>
+            <input type="checkbox" id="settingMaintenance" style="width: 20px; height: 20px;">
+          </div>
+
+          <div style="margin-top: 25px; display: flex; justify-content: flex-end;">
+            <button type="submit" class="button button-success">Save System Settings</button>
+          </div>
+        </form>
+      </div>
+
+      <footer>CabGo Super Administrator Governance · Member 3 Module</footer>
+    </main>
+  </div>
+</body>
+</html>

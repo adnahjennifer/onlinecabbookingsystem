@@ -31,7 +31,27 @@ const API_CONFIG = {
         driverVehicles: "/api/driver/vehicles",
         driverVehicleItem: "/api/driver/vehicles/:vehicle_id",
         driverEarnings: "/api/driver/earnings",
-        driverAvailability: "/api/driver/availability"
+        driverAvailability: "/api/driver/availability",
+        // Admin endpoints (Member 3 - Day 5)
+        adminStats: "/api/admin/stats",
+        adminDrivers: "/api/admin/drivers",
+        adminDriverApprove: "/api/admin/drivers/:driver_id/approve",
+        adminDriverReject: "/api/admin/drivers/:driver_id/reject",
+        adminDriverBlock: "/api/admin/drivers/:driver_id/block",
+        adminPassengers: "/api/admin/passengers",
+        adminPassengerToggle: "/api/admin/passengers/:user_id/toggle-block",
+        adminVehicles: "/api/admin/vehicles",
+        adminVehicleApprove: "/api/admin/vehicles/:vehicle_id/approve",
+        adminVehicleReject: "/api/admin/vehicles/:vehicle_id/reject",
+        adminFareRules: "/api/admin/fare-rules",
+        adminFareRuleItem: "/api/admin/fare-rules/:rule_id",
+        adminTrips: "/api/admin/trips",
+        // Super Admin endpoints (Member 3 - Day 6)
+        superadminStats: "/api/superadmin/stats",
+        superadminAdmins: "/api/superadmin/admins",
+        superadminAdminToggle: "/api/superadmin/admins/:user_id/toggle",
+        superadminLogs: "/api/superadmin/logs",
+        superadminSettings: "/api/superadmin/settings"
     },
     /**
      * Resolves the cancel booking endpoint path for a given request ID.
@@ -56,6 +76,30 @@ const API_CONFIG = {
     },
     getDriverVehicleItemUrl(vehicleId) {
         return this.ENDPOINTS.driverVehicleItem.replace(":vehicle_id", encodeURIComponent(vehicleId));
+    },
+    getAdminDriverApproveUrl(driverId) {
+        return this.ENDPOINTS.adminDriverApprove.replace(":driver_id", encodeURIComponent(driverId));
+    },
+    getAdminDriverRejectUrl(driverId) {
+        return this.ENDPOINTS.adminDriverReject.replace(":driver_id", encodeURIComponent(driverId));
+    },
+    getAdminDriverBlockUrl(driverId) {
+        return this.ENDPOINTS.adminDriverBlock.replace(":driver_id", encodeURIComponent(driverId));
+    },
+    getAdminPassengerToggleUrl(userId) {
+        return this.ENDPOINTS.adminPassengerToggle.replace(":user_id", encodeURIComponent(userId));
+    },
+    getAdminVehicleApproveUrl(vehicleId) {
+        return this.ENDPOINTS.adminVehicleApprove.replace(":vehicle_id", encodeURIComponent(vehicleId));
+    },
+    getAdminVehicleRejectUrl(vehicleId) {
+        return this.ENDPOINTS.adminVehicleReject.replace(":vehicle_id", encodeURIComponent(vehicleId));
+    },
+    getAdminFareRuleItemUrl(ruleId) {
+        return this.ENDPOINTS.adminFareRuleItem.replace(":rule_id", encodeURIComponent(ruleId));
+    },
+    getSuperadminAdminToggleUrl(userId) {
+        return this.ENDPOINTS.superadminAdminToggle.replace(":user_id", encodeURIComponent(userId));
     }
 };
 
@@ -244,6 +288,34 @@ function getMockUsers() {
             email: "driver@example.com",
             password: "Password123",
             role: "driver"
+        });
+        modified = true;
+    }
+
+    // Default sample admin for quick test login (Member 3 - Day 5)
+    if (!users.some((u) => u.email && u.email.toLowerCase() === "admin@example.com")) {
+        users.push({
+            id: 201,
+            user_id: 201,
+            name: "Meera K.",
+            full_name: "Meera K.",
+            email: "admin@example.com",
+            password: "Password123",
+            role: "admin"
+        });
+        modified = true;
+    }
+
+    // Default sample super admin for quick test login (Member 3 - Day 6)
+    if (!users.some((u) => u.email && u.email.toLowerCase() === "superadmin@example.com")) {
+        users.push({
+            id: 301,
+            user_id: 301,
+            name: "Suresh V.",
+            full_name: "Suresh V.",
+            email: "superadmin@example.com",
+            password: "Password123",
+            role: "super_admin"
         });
         modified = true;
     }
@@ -1459,6 +1531,804 @@ async function mockApiRequest(path, method, body) {
             data: {
                 message: `Availability updated to ${profile.availability_status}.`,
                 availability_status: profile.availability_status
+            }
+        };
+    }
+
+    /* ======================================================================
+       ADMIN & SUPER ADMIN MOCK ENDPOINTS (Member 3 - Days 5 & 6)
+       ====================================================================== */
+
+    const MOCK_ADMIN_DRIVERS_KEY = "cabgo_mock_admin_drivers";
+    const MOCK_ADMIN_PASSENGERS_KEY = "cabgo_mock_admin_passengers";
+    const MOCK_ADMIN_FARE_RULES_KEY = "cabgo_mock_admin_fare_rules";
+    const MOCK_SUPERADMIN_ADMINS_KEY = "cabgo_mock_superadmin_admins";
+    const MOCK_SUPERADMIN_LOGS_KEY = "cabgo_mock_superadmin_logs";
+    const MOCK_SUPERADMIN_SETTINGS_KEY = "cabgo_mock_superadmin_settings";
+
+    function getMockAdminDrivers() {
+        try {
+            const raw = localStorage.getItem(MOCK_ADMIN_DRIVERS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {}
+
+        const defaults = [
+            {
+                driver_id: 101,
+                user_id: 201,
+                full_name: "Kavya R.",
+                email: "kavya@example.com",
+                license_number: "TN-DRV-2024-018",
+                license_expiry: "2028-05-12",
+                verification_status: "pending",
+                availability_status: "offline",
+                rating: null,
+                created_at: "2026-10-18T09:30:00.000Z"
+            },
+            {
+                driver_id: 102,
+                user_id: 102,
+                full_name: "Arjun S.",
+                email: "driver@example.com",
+                license_number: "TN-DRV-2023-042",
+                license_expiry: "2027-11-20",
+                verification_status: "approved",
+                availability_status: "available",
+                rating: 4.80,
+                created_at: "2026-09-10T11:00:00.000Z"
+            },
+            {
+                driver_id: 103,
+                user_id: 203,
+                full_name: "Ramesh Babu",
+                email: "ramesh@example.com",
+                license_number: "TN-DRV-2022-099",
+                license_expiry: "2026-12-31",
+                verification_status: "approved",
+                availability_status: "offline",
+                rating: 4.75,
+                created_at: "2026-08-05T14:15:00.000Z"
+            },
+            {
+                driver_id: 104,
+                user_id: 204,
+                full_name: "Dinesh K.",
+                email: "dinesh@example.com",
+                license_number: "TN-DRV-2024-110",
+                license_expiry: "2029-01-15",
+                verification_status: "rejected",
+                availability_status: "offline",
+                rating: null,
+                created_at: "2026-10-22T16:40:00.000Z"
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_ADMIN_DRIVERS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+        return defaults;
+    }
+
+    function saveMockAdminDrivers(drivers) {
+        try {
+            localStorage.setItem(MOCK_ADMIN_DRIVERS_KEY, JSON.stringify(drivers));
+        } catch (e) {}
+    }
+
+    function getMockAdminPassengers() {
+        try {
+            const raw = localStorage.getItem(MOCK_ADMIN_PASSENGERS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {}
+
+        const defaults = [
+            {
+                user_id: 1,
+                full_name: "Alex",
+                email: "alex@example.com",
+                role: "passenger",
+                status: "active",
+                total_trips: 4,
+                created_at: "2026-09-01T10:00:00.000Z"
+            },
+            {
+                user_id: 101,
+                full_name: "Priya S.",
+                email: "priya@example.com",
+                role: "passenger",
+                status: "active",
+                total_trips: 8,
+                created_at: "2026-09-14T12:30:00.000Z"
+            },
+            {
+                user_id: 102,
+                full_name: "Rahul M.",
+                email: "rahul@example.com",
+                role: "passenger",
+                status: "active",
+                total_trips: 3,
+                created_at: "2026-10-02T15:20:00.000Z"
+            },
+            {
+                user_id: 105,
+                full_name: "Sneha V.",
+                email: "sneha@example.com",
+                role: "passenger",
+                status: "blocked",
+                total_trips: 1,
+                created_at: "2026-10-10T18:00:00.000Z"
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_ADMIN_PASSENGERS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+        return defaults;
+    }
+
+    function saveMockAdminPassengers(passengers) {
+        try {
+            localStorage.setItem(MOCK_ADMIN_PASSENGERS_KEY, JSON.stringify(passengers));
+        } catch (e) {}
+    }
+
+    function getMockAdminFareRules() {
+        try {
+            const raw = localStorage.getItem(MOCK_ADMIN_FARE_RULES_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {}
+
+        const defaults = [
+            {
+                fare_rule_id: 1,
+                vehicle_type: "standard",
+                base_fare: 50.00,
+                per_km_rate: 12.00,
+                per_minute_rate: 1.50,
+                is_active: true,
+                updated_at: "2026-10-25T10:00:00.000Z"
+            },
+            {
+                fare_rule_id: 2,
+                vehicle_type: "sedan",
+                base_fare: 75.00,
+                per_km_rate: 15.00,
+                per_minute_rate: 2.00,
+                is_active: true,
+                updated_at: "2026-10-25T10:00:00.000Z"
+            },
+            {
+                fare_rule_id: 3,
+                vehicle_type: "suv",
+                base_fare: 110.00,
+                per_km_rate: 20.00,
+                per_minute_rate: 2.50,
+                is_active: true,
+                updated_at: "2026-10-25T10:00:00.000Z"
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_ADMIN_FARE_RULES_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+        return defaults;
+    }
+
+    function saveMockAdminFareRules(rules) {
+        try {
+            localStorage.setItem(MOCK_ADMIN_FARE_RULES_KEY, JSON.stringify(rules));
+        } catch (e) {}
+    }
+
+    function getMockSuperadminAdmins() {
+        try {
+            const raw = localStorage.getItem(MOCK_SUPERADMIN_ADMINS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {}
+
+        const defaults = [
+            {
+                user_id: 201,
+                full_name: "Meera K.",
+                email: "admin@example.com",
+                role: "admin",
+                department: "Operations",
+                status: "active",
+                created_at: "2026-09-01T09:00:00.000Z"
+            },
+            {
+                user_id: 302,
+                full_name: "Dev P.",
+                email: "dev@example.com",
+                role: "admin",
+                department: "Reports & Auditing",
+                status: "inactive",
+                created_at: "2026-09-15T11:30:00.000Z"
+            },
+            {
+                user_id: 303,
+                full_name: "Karthik N.",
+                email: "karthik@example.com",
+                role: "admin",
+                department: "Driver Management",
+                status: "active",
+                created_at: "2026-10-05T14:00:00.000Z"
+            },
+            {
+                user_id: 301,
+                full_name: "Suresh V.",
+                email: "superadmin@example.com",
+                role: "super_admin",
+                department: "System Owner",
+                status: "active",
+                created_at: "2026-08-01T00:00:00.000Z"
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_SUPERADMIN_ADMINS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+        return defaults;
+    }
+
+    function saveMockSuperadminAdmins(admins) {
+        try {
+            localStorage.setItem(MOCK_SUPERADMIN_ADMINS_KEY, JSON.stringify(admins));
+        } catch (e) {}
+    }
+
+    function getMockSuperadminLogs() {
+        try {
+            const raw = localStorage.getItem(MOCK_SUPERADMIN_LOGS_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) return parsed;
+            }
+        } catch (e) {}
+
+        const defaults = [
+            {
+                log_id: 101,
+                timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString().replace("T", " ").substring(0, 19),
+                actor: "ADM-01 (Meera K.)",
+                action: "Approved driver registration",
+                status: "success",
+                details: "Driver #102 (Arjun S.) verification completed."
+            },
+            {
+                log_id: 102,
+                timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString().replace("T", " ").substring(0, 19),
+                actor: "SA-01 (Suresh V.)",
+                action: "Updated fare rules",
+                status: "info",
+                details: "Standard base fare set to ₹50.00, per km ₹12.00."
+            },
+            {
+                log_id: 103,
+                timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString().replace("T", " ").substring(0, 19),
+                actor: "System",
+                action: "Database backup & check",
+                status: "success",
+                details: "Daily transaction snapshot created successfully."
+            },
+            {
+                log_id: 104,
+                timestamp: new Date(Date.now() - 1000 * 60 * 240).toISOString().replace("T", " ").substring(0, 19),
+                actor: "ADM-02 (Dev P.)",
+                action: "Passenger account flag",
+                status: "warning",
+                details: "Passenger #105 (Sneha V.) placed on hold."
+            },
+            {
+                log_id: 105,
+                timestamp: new Date(Date.now() - 1000 * 60 * 360).toISOString().replace("T", " ").substring(0, 19),
+                actor: "SA-01 (Suresh V.)",
+                action: "Security audit",
+                status: "info",
+                details: "Reviewed session tokens and authentication roles."
+            }
+        ];
+
+        try {
+            localStorage.setItem(MOCK_SUPERADMIN_LOGS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+        return defaults;
+    }
+
+    function addMockLog(actor, action, status, details) {
+        try {
+            const logs = getMockSuperadminLogs();
+            logs.unshift({
+                log_id: Date.now() % 100000,
+                timestamp: new Date().toISOString().replace("T", " ").substring(0, 19),
+                actor: actor || "Admin",
+                action: action,
+                status: status || "info",
+                details: details || ""
+            });
+            localStorage.setItem(MOCK_SUPERADMIN_LOGS_KEY, JSON.stringify(logs.slice(0, 50)));
+        } catch (e) {}
+    }
+
+    function getMockSuperadminSettings() {
+        try {
+            const raw = localStorage.getItem(MOCK_SUPERADMIN_SETTINGS_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch (e) {}
+
+        const defaults = {
+            platform_name: "CabGo Online Cab Booking",
+            maintenance_mode: false,
+            booking_enabled: true,
+            driver_commission_percentage: 15,
+            max_search_radius_km: 15,
+            support_email: "support@cabgo.local",
+            surge_pricing_enabled: true
+        };
+
+        try {
+            localStorage.setItem(MOCK_SUPERADMIN_SETTINGS_KEY, JSON.stringify(defaults));
+        } catch (e) {}
+        return defaults;
+    }
+
+    function saveMockSuperadminSettings(settings) {
+        try {
+            localStorage.setItem(MOCK_SUPERADMIN_SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) {}
+    }
+
+    // 17. GET /api/admin/stats
+    if (path === API_CONFIG.ENDPOINTS.adminStats && methodUpper === "GET") {
+        const drivers = getMockAdminDrivers();
+        const passengers = getMockAdminPassengers();
+        const vehicles = getMockDriverVehicles();
+        const pendingDrivers = drivers.filter(d => d.verification_status === "pending").length;
+        const pendingVehicles = vehicles.filter(v => v.approval_status === "pending").length;
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                total_passengers: passengers.length + 1244,
+                total_drivers: drivers.length + 82,
+                active_trips: 24,
+                today_revenue: 42650.00,
+                pending_verifications: pendingDrivers,
+                pending_vehicles: pendingVehicles
+            }
+        };
+    }
+
+    // 18. GET /api/admin/drivers
+    if (path === API_CONFIG.ENDPOINTS.adminDrivers && methodUpper === "GET") {
+        const drivers = getMockAdminDrivers();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Drivers retrieved successfully.",
+                drivers: drivers
+            }
+        };
+    }
+
+    // 19. POST /api/admin/drivers/:driver_id/approve
+    const adminDriverApproveMatch = path.match(/^\/api\/admin\/drivers\/([^/]+)\/approve$/);
+    if (adminDriverApproveMatch && methodUpper === "POST") {
+        const driverId = adminDriverApproveMatch[1];
+        const drivers = getMockAdminDrivers();
+        const driver = drivers.find(d => String(d.driver_id) === String(driverId));
+        if (!driver) {
+            return { ok: false, status: 404, data: { message: "Driver not found." } };
+        }
+        driver.verification_status = "approved";
+        saveMockAdminDrivers(drivers);
+        addMockLog("Admin", "Approved driver registration", "success", `Driver #${driverId} (${driver.full_name}) approved.`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Driver ${driver.full_name} has been approved.`, driver }
+        };
+    }
+
+    // 20. POST /api/admin/drivers/:driver_id/reject
+    const adminDriverRejectMatch = path.match(/^\/api\/admin\/drivers\/([^/]+)\/reject$/);
+    if (adminDriverRejectMatch && methodUpper === "POST") {
+        const driverId = adminDriverRejectMatch[1];
+        const drivers = getMockAdminDrivers();
+        const driver = drivers.find(d => String(d.driver_id) === String(driverId));
+        if (!driver) {
+            return { ok: false, status: 404, data: { message: "Driver not found." } };
+        }
+        driver.verification_status = "rejected";
+        saveMockAdminDrivers(drivers);
+        addMockLog("Admin", "Rejected driver registration", "warning", `Driver #${driverId} (${driver.full_name}) rejected.`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Driver ${driver.full_name} has been rejected.`, driver }
+        };
+    }
+
+    // 21. POST /api/admin/drivers/:driver_id/block
+    const adminDriverBlockMatch = path.match(/^\/api\/admin\/drivers\/([^/]+)\/block$/);
+    if (adminDriverBlockMatch && methodUpper === "POST") {
+        const driverId = adminDriverBlockMatch[1];
+        const drivers = getMockAdminDrivers();
+        const driver = drivers.find(d => String(d.driver_id) === String(driverId));
+        if (!driver) {
+            return { ok: false, status: 404, data: { message: "Driver not found." } };
+        }
+        driver.verification_status = "rejected";
+        driver.availability_status = "offline";
+        saveMockAdminDrivers(drivers);
+        addMockLog("Admin", "Blocked driver account", "warning", `Driver #${driverId} (${driver.full_name}) blocked.`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Driver ${driver.full_name} blocked successfully.`, driver }
+        };
+    }
+
+    // 22. GET /api/admin/passengers
+    if (path === API_CONFIG.ENDPOINTS.adminPassengers && methodUpper === "GET") {
+        const passengers = getMockAdminPassengers();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Passengers retrieved successfully.",
+                passengers: passengers
+            }
+        };
+    }
+
+    // 23. POST /api/admin/passengers/:user_id/toggle-block
+    const adminPassengerToggleMatch = path.match(/^\/api\/admin\/passengers\/([^/]+)\/toggle-block$/);
+    if (adminPassengerToggleMatch && methodUpper === "POST") {
+        const userId = adminPassengerToggleMatch[1];
+        const passengers = getMockAdminPassengers();
+        const p = passengers.find(item => String(item.user_id) === String(userId));
+        if (!p) {
+            return { ok: false, status: 404, data: { message: "Passenger not found." } };
+        }
+        p.status = p.status === "active" ? "blocked" : "active";
+        saveMockAdminPassengers(passengers);
+        addMockLog("Admin", `Passenger status changed to ${p.status}`, "info", `Passenger #${userId} (${p.full_name}) is now ${p.status}.`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Passenger ${p.full_name} is now ${p.status}.`, passenger: p }
+        };
+    }
+
+    // 24. GET /api/admin/vehicles
+    if (path === API_CONFIG.ENDPOINTS.adminVehicles && methodUpper === "GET") {
+        const vehicles = getMockDriverVehicles();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Fleet vehicles retrieved successfully.",
+                vehicles: vehicles
+            }
+        };
+    }
+
+    // 25. POST /api/admin/vehicles/:vehicle_id/approve
+    const adminVehicleApproveMatch = path.match(/^\/api\/admin\/vehicles\/([^/]+)\/approve$/);
+    if (adminVehicleApproveMatch && methodUpper === "POST") {
+        const vId = adminVehicleApproveMatch[1];
+        const vehicles = getMockDriverVehicles();
+        const vehicle = vehicles.find(v => String(v.vehicle_id) === String(vId));
+        if (!vehicle) {
+            return { ok: false, status: 404, data: { message: "Vehicle not found." } };
+        }
+        vehicle.approval_status = "approved";
+        saveMockDriverVehicles(vehicles);
+        addMockLog("Admin", "Approved vehicle", "success", `Vehicle ${vehicle.registration_number} (${vehicle.model}) approved.`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Vehicle ${vehicle.registration_number} approved.`, vehicle }
+        };
+    }
+
+    // 26. POST /api/admin/vehicles/:vehicle_id/reject
+    const adminVehicleRejectMatch = path.match(/^\/api\/admin\/vehicles\/([^/]+)\/reject$/);
+    if (adminVehicleRejectMatch && methodUpper === "POST") {
+        const vId = adminVehicleRejectMatch[1];
+        const vehicles = getMockDriverVehicles();
+        const vehicle = vehicles.find(v => String(v.vehicle_id) === String(vId));
+        if (!vehicle) {
+            return { ok: false, status: 404, data: { message: "Vehicle not found." } };
+        }
+        vehicle.approval_status = "rejected";
+        saveMockDriverVehicles(vehicles);
+        addMockLog("Admin", "Rejected vehicle", "warning", `Vehicle ${vehicle.registration_number} rejected.`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Vehicle ${vehicle.registration_number} rejected.`, vehicle }
+        };
+    }
+
+    // 27. GET /api/admin/fare-rules
+    if (path === API_CONFIG.ENDPOINTS.adminFareRules && methodUpper === "GET") {
+        const rules = getMockAdminFareRules();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Fare rules retrieved successfully.",
+                fare_rules: rules
+            }
+        };
+    }
+
+    // 28. PUT /api/admin/fare-rules/:rule_id
+    const adminFareRuleMatch = path.match(/^\/api\/admin\/fare-rules\/([^/]+)$/);
+    if (adminFareRuleMatch && (methodUpper === "PUT" || methodUpper === "PATCH")) {
+        const ruleId = adminFareRuleMatch[1];
+        const rules = getMockAdminFareRules();
+        const rule = rules.find(r => String(r.fare_rule_id) === String(ruleId) || r.vehicle_type === ruleId);
+        if (!rule) {
+            return { ok: false, status: 404, data: { message: "Fare rule not found." } };
+        }
+
+        if (body.base_fare !== undefined) rule.base_fare = parseFloat(body.base_fare) || rule.base_fare;
+        if (body.per_km_rate !== undefined) rule.per_km_rate = parseFloat(body.per_km_rate) || rule.per_km_rate;
+        if (body.per_minute_rate !== undefined) rule.per_minute_rate = parseFloat(body.per_minute_rate) || rule.per_minute_rate;
+        rule.updated_at = new Date().toISOString();
+
+        saveMockAdminFareRules(rules);
+        addMockLog("Admin", `Updated fare rules for ${rule.vehicle_type}`, "info", `Base: ₹${rule.base_fare}, Per Km: ₹${rule.per_km_rate}`);
+        return {
+            ok: true,
+            status: 200,
+            data: { message: `Fare rule for ${rule.vehicle_type} updated successfully.`, fare_rule: rule }
+        };
+    }
+
+    // 29. GET /api/admin/trips
+    if (path === API_CONFIG.ENDPOINTS.adminTrips && methodUpper === "GET") {
+        const trips = [
+            {
+                trip_id: 1008,
+                request_id: 2038,
+                passenger_name: "Suresh Kumar",
+                driver_name: "Arjun S.",
+                pickup_location: "Adyar",
+                drop_location: "T. Nagar",
+                vehicle_type: "standard",
+                final_fare: 280.00,
+                status: "completed",
+                started_at: "2026-10-29T18:00:00.000Z",
+                completed_at: "2026-10-29T18:30:00.000Z"
+            },
+            {
+                trip_id: 1009,
+                request_id: 2041,
+                passenger_name: "Priya S.",
+                driver_name: "Kavya R.",
+                pickup_location: "Guindy",
+                drop_location: "Velachery",
+                vehicle_type: "sedan",
+                final_fare: 210.00,
+                status: "in_progress",
+                started_at: "2026-10-29T19:10:00.000Z",
+                completed_at: null
+            },
+            {
+                trip_id: 1010,
+                request_id: 2042,
+                passenger_name: "Rahul M.",
+                driver_name: "Ramesh Babu",
+                pickup_location: "Mylapore",
+                drop_location: "Egmore",
+                vehicle_type: "standard",
+                final_fare: 190.00,
+                status: "completed",
+                started_at: "2026-10-29T17:15:00.000Z",
+                completed_at: "2026-10-29T17:45:00.000Z"
+            },
+            {
+                trip_id: 1011,
+                request_id: 2043,
+                passenger_name: "Alex",
+                driver_name: "Arjun S.",
+                pickup_location: "Chennai Central",
+                drop_location: "Marina Beach",
+                vehicle_type: "standard",
+                final_fare: 180.00,
+                status: "completed",
+                started_at: "2026-10-28T14:00:00.000Z",
+                completed_at: "2026-10-28T14:25:00.000Z"
+            }
+        ];
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Trips retrieved successfully.",
+                trips: trips
+            }
+        };
+    }
+
+    // 30. GET /api/superadmin/stats
+    if (path === API_CONFIG.ENDPOINTS.superadminStats && methodUpper === "GET") {
+        const admins = getMockSuperadminAdmins();
+        const activeAdmins = admins.filter(a => a.status === "active").length;
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                total_admins: admins.length,
+                active_admins: activeAdmins,
+                permission_groups: 4,
+                events_today: 128
+            }
+        };
+    }
+
+    // 31. GET /api/superadmin/admins
+    if (path === API_CONFIG.ENDPOINTS.superadminAdmins && methodUpper === "GET") {
+        const admins = getMockSuperadminAdmins();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "Administrators retrieved successfully.",
+                admins: admins
+            }
+        };
+    }
+
+    // 32. POST /api/superadmin/admins (Add admin)
+    if (path === API_CONFIG.ENDPOINTS.superadminAdmins && methodUpper === "POST") {
+        const name = body && body.full_name ? String(body.full_name).trim() : "";
+        const email = body && body.email ? String(body.email).trim().toLowerCase() : "";
+        const department = body && body.department ? String(body.department).trim() : "Operations";
+        const password = body && body.password ? String(body.password) : "Admin123";
+
+        if (!name || !email) {
+            return {
+                ok: false,
+                status: 400,
+                data: { message: "Name and email are required." }
+            };
+        }
+
+        const admins = getMockSuperadminAdmins();
+        if (admins.some(a => a.email === email)) {
+            return {
+                ok: false,
+                status: 409,
+                data: { message: "An administrator with this email already exists." }
+            };
+        }
+
+        const newAdmin = {
+            user_id: Date.now() % 100000,
+            full_name: name,
+            email: email,
+            role: "admin",
+            department: department,
+            status: "active",
+            created_at: new Date().toISOString()
+        };
+
+        admins.push(newAdmin);
+        saveMockSuperadminAdmins(admins);
+
+        // Also add to mockUsers so they can log in
+        const mockUsers = getMockUsers();
+        mockUsers.push({
+            id: newAdmin.user_id,
+            user_id: newAdmin.user_id,
+            name: newAdmin.full_name,
+            full_name: newAdmin.full_name,
+            email: newAdmin.email,
+            password: password,
+            role: "admin"
+        });
+        saveMockUsers(mockUsers);
+
+        addMockLog("Super Admin", "Created new administrator", "success", `Added admin ${name} (${email}) with department ${department}.`);
+
+        return {
+            ok: true,
+            status: 201,
+            data: {
+                message: `Administrator ${name} created successfully.`,
+                admin: newAdmin
+            }
+        };
+    }
+
+    // 33. POST /api/superadmin/admins/:user_id/toggle
+    const superAdminToggleMatch = path.match(/^\/api\/superadmin\/admins\/([^/]+)\/toggle$/);
+    if (superAdminToggleMatch && methodUpper === "POST") {
+        const uId = superAdminToggleMatch[1];
+        const admins = getMockSuperadminAdmins();
+        const target = admins.find(a => String(a.user_id) === String(uId));
+        if (!target) {
+            return { ok: false, status: 404, data: { message: "Administrator not found." } };
+        }
+
+        target.status = target.status === "active" ? "inactive" : "active";
+        saveMockSuperadminAdmins(admins);
+        addMockLog("Super Admin", `Changed admin status to ${target.status}`, "warning", `Admin #${uId} (${target.full_name}) is now ${target.status}.`);
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: `Administrator ${target.full_name} is now ${target.status}.`,
+                admin: target
+            }
+        };
+    }
+
+    // 34. GET /api/superadmin/logs
+    if (path === API_CONFIG.ENDPOINTS.superadminLogs && methodUpper === "GET") {
+        const logs = getMockSuperadminLogs();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "System logs retrieved successfully.",
+                logs: logs
+            }
+        };
+    }
+
+    // 35. GET /api/superadmin/settings
+    if (path === API_CONFIG.ENDPOINTS.superadminSettings && methodUpper === "GET") {
+        const settings = getMockSuperadminSettings();
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "System settings retrieved successfully.",
+                settings: settings
+            }
+        };
+    }
+
+    // 36. PUT /api/superadmin/settings
+    if (path === API_CONFIG.ENDPOINTS.superadminSettings && (methodUpper === "PUT" || methodUpper === "POST")) {
+        const current = getMockSuperadminSettings();
+        if (body.platform_name !== undefined) current.platform_name = String(body.platform_name).trim();
+        if (body.maintenance_mode !== undefined) current.maintenance_mode = Boolean(body.maintenance_mode);
+        if (body.booking_enabled !== undefined) current.booking_enabled = Boolean(body.booking_enabled);
+        if (body.driver_commission_percentage !== undefined) current.driver_commission_percentage = Number(body.driver_commission_percentage);
+        if (body.max_search_radius_km !== undefined) current.max_search_radius_km = Number(body.max_search_radius_km);
+        if (body.support_email !== undefined) current.support_email = String(body.support_email).trim();
+
+        saveMockSuperadminSettings(current);
+        addMockLog("Super Admin", "Updated system settings", "info", `Commission: ${current.driver_commission_percentage}%, Maintenance: ${current.maintenance_mode}`);
+
+        return {
+            ok: true,
+            status: 200,
+            data: {
+                message: "System settings updated successfully.",
+                settings: current
             }
         };
     }

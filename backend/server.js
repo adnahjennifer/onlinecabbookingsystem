@@ -1310,6 +1310,453 @@ if (req.method === 'GET' && req.url === '/api/ride-requests/mine') {
         return;
     }
 
+    /* ======================================================================
+       MEMBER 3: ADMIN ROUTES (Day 5)
+       ====================================================================== */
+
+    // GET /api/admin/stats
+    if (req.method === 'GET' && req.url === '/api/admin/stats') {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [[passengers]] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role = 'passenger'");
+            const [[drivers]] = await pool.execute("SELECT COUNT(*) AS count FROM driver_profiles");
+            const [[activeTrips]] = await pool.execute("SELECT COUNT(*) AS count FROM trips WHERE status IN ('accepted', 'started')");
+            const [[revenue]] = await pool.execute("SELECT COALESCE(SUM(final_fare), 0) AS total FROM trips WHERE status = 'completed'");
+
+            res.writeHead(200);
+            res.end(JSON.stringify({
+                total_passengers: passengers.count,
+                total_drivers: drivers.count,
+                active_trips: activeTrips.count,
+                today_revenue: Number(revenue.total)
+            }));
+        } catch (error) {
+            console.error('Admin stats error:', error.message);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not fetch admin stats.' } }));
+        }
+        return;
+    }
+
+    // GET /api/admin/drivers
+    if (req.method === 'GET' && req.url === '/api/admin/drivers') {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [drivers] = await pool.execute(`
+                SELECT dp.driver_id, dp.user_id, u.full_name, u.email,
+                       dp.license_number, dp.license_expiry, dp.verification_status,
+                       dp.availability_status, dp.rating, dp.created_at
+                FROM driver_profiles dp
+                JOIN users u ON dp.user_id = u.user_id
+                ORDER BY dp.created_at DESC
+            `);
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ drivers }));
+        } catch (error) {
+            console.error('Admin drivers error:', error.message);
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not fetch drivers.' } }));
+        }
+        return;
+    }
+
+    // POST /api/admin/drivers/:driver_id/approve
+    const adminApproveDriverMatch = req.url.match(/^\/api\/admin\/drivers\/(\d+)\/approve$/);
+    if (req.method === 'POST' && adminApproveDriverMatch) {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const driverId = adminApproveDriverMatch[1];
+        try {
+            const [result] = await pool.execute(
+                "UPDATE driver_profiles SET verification_status = 'approved' WHERE driver_id = ?",
+                [driverId]
+            );
+
+            if (result.affectedRows === 0) {
+                res.writeHead(404);
+                res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Driver not found.' } }));
+                return;
+            }
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ message: `Driver #${driverId} approved successfully.` }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // POST /api/admin/drivers/:driver_id/reject
+    const adminRejectDriverMatch = req.url.match(/^\/api\/admin\/drivers\/(\d+)\/reject$/);
+    if (req.method === 'POST' && adminRejectDriverMatch) {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const driverId = adminRejectDriverMatch[1];
+        try {
+            const [result] = await pool.execute(
+                "UPDATE driver_profiles SET verification_status = 'rejected' WHERE driver_id = ?",
+                [driverId]
+            );
+
+            if (result.affectedRows === 0) {
+                res.writeHead(404);
+                res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Driver not found.' } }));
+                return;
+            }
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ message: `Driver #${driverId} rejected.` }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // POST /api/admin/drivers/:driver_id/block
+    const adminBlockDriverMatch = req.url.match(/^\/api\/admin\/drivers\/(\d+)\/block$/);
+    if (req.method === 'POST' && adminBlockDriverMatch) {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const driverId = adminBlockDriverMatch[1];
+        try {
+            const [result] = await pool.execute(
+                "UPDATE driver_profiles SET verification_status = 'rejected', availability_status = 'offline' WHERE driver_id = ?",
+                [driverId]
+            );
+
+            if (result.affectedRows === 0) {
+                res.writeHead(404);
+                res.end(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Driver not found.' } }));
+                return;
+            }
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ message: `Driver #${driverId} blocked successfully.` }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // GET /api/admin/passengers
+    if (req.method === 'GET' && req.url === '/api/admin/passengers') {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [passengers] = await pool.execute(`
+                SELECT u.user_id, u.full_name, u.email, u.created_at,
+                       COUNT(r.request_id) AS total_trips,
+                       'active' AS status
+                FROM users u
+                LEFT JOIN ride_requests r ON u.user_id = r.passenger_id
+                WHERE u.role = 'passenger'
+                GROUP BY u.user_id
+                ORDER BY u.created_at DESC
+            `);
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ passengers }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not fetch passengers.' } }));
+        }
+        return;
+    }
+
+    // GET /api/admin/vehicles
+    if (req.method === 'GET' && req.url === '/api/admin/vehicles') {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [vehicles] = await pool.execute(`
+                SELECT v.vehicle_id, v.driver_id, u.full_name AS driver_name,
+                       v.registration_number, v.vehicle_type, v.model,
+                       v.capacity, v.approval_status, v.is_active, v.created_at
+                FROM vehicles v
+                JOIN driver_profiles dp ON v.driver_id = dp.driver_id
+                JOIN users u ON dp.user_id = u.user_id
+                ORDER BY v.created_at DESC
+            `);
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ vehicles }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not fetch vehicles.' } }));
+        }
+        return;
+    }
+
+    // POST /api/admin/vehicles/:vehicle_id/approve
+    const adminApproveVehicleMatch = req.url.match(/^\/api\/admin\/vehicles\/(\d+)\/approve$/);
+    if (req.method === 'POST' && adminApproveVehicleMatch) {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const vehicleId = adminApproveVehicleMatch[1];
+        try {
+            await pool.execute("UPDATE vehicles SET approval_status = 'approved' WHERE vehicle_id = ?", [vehicleId]);
+            res.writeHead(200);
+            res.end(JSON.stringify({ message: `Vehicle #${vehicleId} approved successfully.` }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // POST /api/admin/vehicles/:vehicle_id/reject
+    const adminRejectVehicleMatch = req.url.match(/^\/api\/admin\/vehicles\/(\d+)\/reject$/);
+    if (req.method === 'POST' && adminRejectVehicleMatch) {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const vehicleId = adminRejectVehicleMatch[1];
+        try {
+            await pool.execute("UPDATE vehicles SET approval_status = 'rejected' WHERE vehicle_id = ?", [vehicleId]);
+            res.writeHead(200);
+            res.end(JSON.stringify({ message: `Vehicle #${vehicleId} rejected.` }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // GET /api/admin/fare-rules
+    if (req.method === 'GET' && req.url === '/api/admin/fare-rules') {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [rules] = await pool.execute("SELECT * FROM fare_rules ORDER BY fare_rule_id ASC");
+            res.writeHead(200);
+            res.end(JSON.stringify({ fare_rules: rules }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // PUT /api/admin/fare-rules/:rule_id
+    const adminFareRuleMatch = req.url.match(/^\/api\/admin\/fare-rules\/(\d+)$/);
+    if ((req.method === 'PUT' || req.method === 'PATCH') && adminFareRuleMatch) {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        const ruleId = adminFareRuleMatch[1];
+        try {
+            const data = await readRequestBody(req);
+            await pool.execute(
+                `UPDATE fare_rules
+                 SET base_fare = COALESCE(?, base_fare),
+                     per_km_rate = COALESCE(?, per_km_rate),
+                     per_minute_rate = COALESCE(?, per_minute_rate)
+                 WHERE fare_rule_id = ?`,
+                [data.base_fare, data.per_km_rate, data.per_minute_rate, ruleId]
+            );
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ message: 'Fare rule updated successfully.' }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // GET /api/admin/trips
+    if (req.method === 'GET' && req.url === '/api/admin/trips') {
+        const auth = requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [trips] = await pool.execute(`
+                SELECT t.trip_id, t.request_id, u_p.full_name AS passenger_name,
+                       u_d.full_name AS driver_name, r.pickup_location, r.drop_location,
+                       r.vehicle_type, t.final_fare, t.status, t.started_at, t.completed_at
+                FROM trips t
+                JOIN ride_requests r ON t.request_id = r.request_id
+                JOIN users u_p ON r.passenger_id = u_p.user_id
+                JOIN driver_profiles dp ON t.driver_id = dp.driver_id
+                JOIN users u_d ON dp.user_id = u_d.user_id
+                ORDER BY t.created_at DESC
+                LIMIT 50
+            `);
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ trips }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    /* ======================================================================
+       MEMBER 3: SUPER ADMIN ROUTES (Day 6)
+       ====================================================================== */
+
+    // GET /api/superadmin/stats
+    if (req.method === 'GET' && req.url === '/api/superadmin/stats') {
+        const auth = requireRole(req, ['super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [[admins]] = await pool.execute("SELECT COUNT(*) AS count FROM users WHERE role IN ('admin', 'super_admin')");
+            res.writeHead(200);
+            res.end(JSON.stringify({
+                total_admins: admins.count,
+                active_admins: admins.count,
+                permission_groups: 4,
+                events_today: 128
+            }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // GET /api/superadmin/admins
+    if (req.method === 'GET' && req.url === '/api/superadmin/admins') {
+        const auth = requireRole(req, ['super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const [admins] = await pool.execute(`
+                SELECT user_id, full_name, email, role,
+                       'Operations' AS department, 'active' AS status, created_at
+                FROM users
+                WHERE role IN ('admin', 'super_admin')
+                ORDER BY created_at ASC
+            `);
+
+            res.writeHead(200);
+            res.end(JSON.stringify({ admins }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
+    // POST /api/superadmin/admins
+    if (req.method === 'POST' && req.url === '/api/superadmin/admins') {
+        const auth = requireRole(req, ['super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        try {
+            const data = await readRequestBody(req);
+            const name = typeof data.full_name === 'string' ? data.full_name.trim() : '';
+            const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+            const password = data.password || 'AdminPass123';
+
+            if (!name || !email) {
+                res.writeHead(400);
+                res.end(JSON.stringify({ error: { code: 'INVALID_INPUT', message: 'Name and email are required.' } }));
+                return;
+            }
+
+            const passwordHash = await bcrypt.hash(password, 12);
+            const [result] = await pool.execute(
+                "INSERT INTO users (full_name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
+                [name, email, passwordHash]
+            );
+
+            res.writeHead(201);
+            res.end(JSON.stringify({
+                message: `Administrator ${name} created successfully.`,
+                admin: {
+                    user_id: result.insertId,
+                    full_name: name,
+                    email: email,
+                    role: 'admin',
+                    department: data.department || 'Operations',
+                    status: 'active'
+                }
+            }));
+        } catch (error) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: error.message } }));
+        }
+        return;
+    }
+
 
 
 

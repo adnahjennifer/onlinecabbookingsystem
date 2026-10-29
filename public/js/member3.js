@@ -1347,45 +1347,938 @@
      Day 1 & 2 Compatibility (Admin and SuperAdmin Placeholders)
      ========================================================================== */
 
-  function initAdminAndSuperAdminPlaceholders() {
-    const role = document.body ? document.body.dataset.role : "";
-    const messageIds = {
-      driver: "driverMessage",
-      admin: "adminMessage",
-      superadmin: "superMessage"
-    };
+  /* ==========================================================================
+     Admin & Super Admin Module Controllers (Member 3 - Days 5 & 6)
+     ========================================================================== */
 
-    const roleMessage = document.getElementById(messageIds[role]);
-    const showRoleMessage = (text) => {
-      if (roleMessage) roleMessage.textContent = text;
-    };
+  function syncAdminSession() {
+    const session = getSession();
+    const userChip = document.querySelector(".user-chip");
+    if (userChip) {
+      if (session && session.user && session.user.role === "admin") {
+        userChip.textContent = `${session.user.full_name || session.user.name} · ADM-${session.user.user_id || session.user.id || "01"}`;
+      } else {
+        userChip.textContent = "Demo Administrator · ADM-01";
+      }
+    }
 
-    document.querySelectorAll("[data-action]").forEach((button) => {
-      // Ignore driver requests or vehicle buttons handled separately
-      if (
-        button.closest("#requestsBody") ||
-        button.closest("#overviewRequestsBody") ||
-        button.closest("#vehiclesTableBody")
-      ) {
+    const logoutBtns = document.querySelectorAll("#adminLogoutBtn, [data-action='logout']");
+    logoutBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        clearSession();
+        window.location.href = "../login.html";
+      });
+    });
+  }
+
+  function syncSuperAdminSession() {
+    const session = getSession();
+    const userChip = document.querySelector(".user-chip");
+    if (userChip) {
+      if (session && session.user && session.user.role === "super_admin") {
+        userChip.textContent = `${session.user.full_name || session.user.name} · SA-${session.user.user_id || session.user.id || "01"}`;
+      } else {
+        userChip.textContent = "System Owner · SA-01";
+      }
+    }
+
+    const logoutBtns = document.querySelectorAll("#superLogoutBtn, [data-action='logout']");
+    logoutBtns.forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        clearSession();
+        window.location.href = "../login.html";
+      });
+    });
+  }
+
+  /* --------------------------------------------------------------------------
+     Admin Module: Overview Dashboard
+     -------------------------------------------------------------------------- */
+  async function initAdminDashboard() {
+    syncAdminSession();
+
+    // 1. Fetch Stats
+    try {
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminStats || "/api/admin/stats");
+      if (res.ok && res.data) {
+        const stats = res.data;
+        const passEl = document.getElementById("statPassengers");
+        if (passEl) passEl.textContent = Number(stats.total_passengers || 0).toLocaleString();
+
+        const drvEl = document.getElementById("statDrivers");
+        if (drvEl) drvEl.textContent = Number(stats.total_drivers || 0).toLocaleString();
+
+        const tripEl = document.getElementById("statActiveTrips");
+        if (tripEl) tripEl.textContent = Number(stats.active_trips || 0).toLocaleString();
+
+        const revEl = document.getElementById("statRevenue");
+        if (revEl) revEl.textContent = formatFare(stats.today_revenue || 0);
+      }
+    } catch (e) {
+      console.warn("Could not load admin stats", e);
+    }
+
+    // 2. Fetch Driver Review Queue
+    loadAdminReviewQueue();
+
+    // 3. Fetch Vehicle Summary
+    try {
+      const vRes = await apiRequest(API_CONFIG.ENDPOINTS.adminVehicles || "/api/admin/vehicles");
+      if (vRes.ok && vRes.data && Array.isArray(vRes.data.vehicles)) {
+        const vList = vRes.data.vehicles;
+        const approved = vList.filter(v => v.approval_status === "approved").length;
+        const pending = vList.filter(v => v.approval_status === "pending").length;
+        const inactive = vList.filter(v => !v.is_active || v.approval_status === "rejected").length;
+
+        const elApp = document.getElementById("approvedVehiclesCount");
+        if (elApp) elApp.textContent = approved;
+        const elPen = document.getElementById("reviewVehiclesCount");
+        if (elPen) elPen.textContent = pending;
+        const elIna = document.getElementById("inactiveVehiclesCount");
+        if (elIna) elIna.textContent = inactive;
+      }
+    } catch (e) {}
+
+    // 4. Fetch Fare Rules Summary
+    try {
+      const fRes = await apiRequest(API_CONFIG.ENDPOINTS.adminFareRules || "/api/admin/fare-rules");
+      if (fRes.ok && fRes.data && Array.isArray(fRes.data.fare_rules)) {
+        const stdRule = fRes.data.fare_rules.find(r => r.vehicle_type === "standard");
+        if (stdRule) {
+          const baseEl = document.getElementById("hatchbackBaseFare");
+          if (baseEl) baseEl.textContent = `₹${Number(stdRule.base_fare).toFixed(2)}`;
+          const kmEl = document.getElementById("perKmRate");
+          if (kmEl) kmEl.textContent = `₹${Number(stdRule.per_km_rate).toFixed(2)}`;
+          const minEl = document.getElementById("perMinuteRate");
+          if (minEl) minEl.textContent = `₹${Number(stdRule.per_minute_rate).toFixed(2)}`;
+        }
+      }
+    } catch (e) {}
+
+    // 5. Fetch Recent Trips
+    loadAdminRecentTrips();
+  }
+
+  async function loadAdminReviewQueue() {
+    const queueBody = document.getElementById("adminReviewQueueBody");
+    const adminMsg = document.getElementById("adminMessage");
+    if (!queueBody) return;
+
+    try {
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminDrivers || "/api/admin/drivers");
+      if (res.ok && res.data && Array.isArray(res.data.drivers)) {
+        const drivers = res.data.drivers;
+        if (drivers.length === 0) {
+          queueBody.innerHTML = `<tr><td colspan="4" class="empty-state">No driver applications in queue.</td></tr>`;
+          return;
+        }
+
+        queueBody.innerHTML = drivers.map(d => {
+          let statusPill = `<span class="pill">${escapeHtml(capitalize(d.verification_status))}</span>`;
+          if (d.verification_status === "approved") {
+            statusPill = `<span class="pill pill-success">Verified</span>`;
+          } else if (d.verification_status === "pending") {
+            statusPill = `<span class="pill pill-warning">Pending</span>`;
+          } else if (d.verification_status === "rejected") {
+            statusPill = `<span class="pill pill-danger">Rejected</span>`;
+          }
+
+          let actions = "";
+          if (d.verification_status === "pending") {
+            actions = `
+              <button class="button button-small button-success" data-action="approve-driver" data-id="${d.driver_id}">Approve</button>
+              <button class="button button-small button-quiet" data-action="reject-driver" data-id="${d.driver_id}">Reject</button>
+            `;
+          } else if (d.verification_status === "approved") {
+            actions = `<button class="button button-small button-quiet" data-action="block-driver" data-id="${d.driver_id}">Block</button>`;
+          } else {
+            actions = `<button class="button button-small" data-action="approve-driver" data-id="${d.driver_id}">Re-approve</button>`;
+          }
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(d.full_name)}</strong><br><small class="muted">${escapeHtml(d.email)}</small></td>
+              <td>${escapeHtml(d.license_number)}</td>
+              <td>${statusPill}</td>
+              <td>${actions}</td>
+            </tr>
+          `;
+        }).join("");
+
+        // Bind Action Buttons
+        queueBody.querySelectorAll("[data-action='approve-driver']").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const res = await apiRequest(`/api/admin/drivers/${id}/approve`, "POST");
+            if (res.ok && adminMsg) {
+              adminMsg.textContent = res.data.message || `Driver #${id} approved successfully.`;
+              adminMsg.className = "message success";
+              loadAdminReviewQueue();
+            }
+          });
+        });
+
+        queueBody.querySelectorAll("[data-action='reject-driver']").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const res = await apiRequest(`/api/admin/drivers/${id}/reject`, "POST");
+            if (res.ok && adminMsg) {
+              adminMsg.textContent = res.data.message || `Driver #${id} rejected.`;
+              adminMsg.className = "message";
+              loadAdminReviewQueue();
+            }
+          });
+        });
+
+        queueBody.querySelectorAll("[data-action='block-driver']").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const id = btn.dataset.id;
+            const res = await apiRequest(`/api/admin/drivers/${id}/block`, "POST");
+            if (res.ok && adminMsg) {
+              adminMsg.textContent = res.data.message || `Driver #${id} blocked.`;
+              adminMsg.className = "message";
+              loadAdminReviewQueue();
+            }
+          });
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to load review queue", e);
+    }
+  }
+
+  async function loadAdminRecentTrips() {
+    const tableBody = document.getElementById("adminRecentTripsBody");
+    if (!tableBody) return;
+
+    try {
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminTrips || "/api/admin/trips");
+      if (res.ok && res.data && Array.isArray(res.data.trips)) {
+        const trips = res.data.trips.slice(0, 5);
+        if (trips.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="5" class="empty-state">No recent trips found.</td></tr>`;
+          return;
+        }
+
+        tableBody.innerHTML = trips.map(t => {
+          let statusPill = `<span class="pill">${escapeHtml(capitalize(t.status))}</span>`;
+          if (t.status === "completed") statusPill = `<span class="pill pill-success">Completed</span>`;
+          if (t.status === "in_progress" || t.status === "started") statusPill = `<span class="pill pill-warning">In Progress</span>`;
+
+          return `
+            <tr>
+              <td><strong>#TR-${t.trip_id}</strong></td>
+              <td>${escapeHtml(t.driver_name || "Assigned Driver")}</td>
+              <td>${escapeHtml(t.pickup_location)} &rarr; ${escapeHtml(t.drop_location)}</td>
+              <td>${formatFare(t.final_fare || 0)}</td>
+              <td>${statusPill}</td>
+            </tr>
+          `;
+        }).join("");
+      }
+    } catch (e) {}
+  }
+
+  /* --------------------------------------------------------------------------
+     Admin Module: Drivers Management (drivers.html)
+     -------------------------------------------------------------------------- */
+  async function initAdminDrivers() {
+    syncAdminSession();
+    const tableBody = document.getElementById("driversTableBody");
+    const statusMsg = document.getElementById("driversPageMessage");
+    const searchInput = document.getElementById("driverSearchInput");
+    const statusFilter = document.getElementById("driverStatusFilter");
+
+    let allDrivers = [];
+
+    async function fetchDrivers() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="7" class="loading-state"><div class="spinner"></div> Loading driver roster...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminDrivers || "/api/admin/drivers");
+      if (res.ok && res.data && Array.isArray(res.data.drivers)) {
+        allDrivers = res.data.drivers;
+        renderDrivers();
+      } else {
+        tableBody.innerHTML = `<tr><td colspan="7" class="empty-state">Failed to load drivers.</td></tr>`;
+      }
+    }
+
+    function renderDrivers() {
+      if (!tableBody) return;
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+      const filter = statusFilter ? statusFilter.value : "all";
+
+      const filtered = allDrivers.filter(d => {
+        const matchesQuery = !query ||
+          d.full_name.toLowerCase().includes(query) ||
+          d.email.toLowerCase().includes(query) ||
+          d.license_number.toLowerCase().includes(query);
+
+        const matchesStatus = filter === "all" || d.verification_status === filter;
+        return matchesQuery && matchesStatus;
+      });
+
+      if (filtered.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="empty-state">No drivers match your criteria.</td></tr>`;
         return;
       }
 
-      button.addEventListener("click", () => {
-        const action = button.dataset.action;
-        const messages = {
-          approve: "Demo only: driver approval action selected. No database record was changed.",
-          block: "Demo only: reject/block action selected. No account was changed.",
-          "add-admin": "Demo only: Add administrator selected. Full admin workflows are scheduled for Day 5.",
-          activate: "Demo only: activate administrator selected.",
-          deactivate: "Demo only: deactivate administrator selected.",
-          setting: "Demo only: settings control selected."
-        };
+      tableBody.innerHTML = filtered.map(d => {
+        let vPill = `<span class="pill">${escapeHtml(capitalize(d.verification_status))}</span>`;
+        if (d.verification_status === "approved") vPill = `<span class="pill pill-success">Verified</span>`;
+        if (d.verification_status === "pending") vPill = `<span class="pill pill-warning">Pending</span>`;
+        if (d.verification_status === "rejected") vPill = `<span class="pill pill-danger">Rejected</span>`;
 
-        if (messages[action]) {
-          showRoleMessage(messages[action]);
+        let aPill = `<span class="pill">${escapeHtml(capitalize(d.availability_status || "offline"))}</span>`;
+        if (d.availability_status === "available") aPill = `<span class="pill pill-success">Online</span>`;
+        if (d.availability_status === "on_trip") aPill = `<span class="pill pill-warning">On Trip</span>`;
+
+        let actions = ``;
+        if (d.verification_status === "pending") {
+          actions = `
+            <button class="button button-small button-success" data-action="approve" data-id="${d.driver_id}">Approve</button>
+            <button class="button button-small button-quiet" data-action="reject" data-id="${d.driver_id}">Reject</button>
+          `;
+        } else if (d.verification_status === "approved") {
+          actions = `<button class="button button-small button-quiet" data-action="block" data-id="${d.driver_id}">Block</button>`;
+        } else {
+          actions = `<button class="button button-small" data-action="approve" data-id="${d.driver_id}">Approve</button>`;
+        }
+
+        return `
+          <tr>
+            <td><strong>#DRV-${d.driver_id}</strong></td>
+            <td><strong>${escapeHtml(d.full_name)}</strong><br><small class="muted">${escapeHtml(d.email)}</small></td>
+            <td><code>${escapeHtml(d.license_number)}</code><br><small class="muted">Exp: ${escapeHtml(d.license_expiry || "N/A")}</small></td>
+            <td>${vPill}</td>
+            <td>${aPill}</td>
+            <td>${d.rating ? `<span class="star">★</span> ${d.rating.toFixed(1)}` : '<span class="muted">New</span>'}</td>
+            <td>${actions}</td>
+          </tr>
+        `;
+      }).join("");
+
+      // Bind actions
+      tableBody.querySelectorAll("[data-action='approve']").forEach(b => {
+        b.addEventListener("click", async () => {
+          const res = await apiRequest(`/api/admin/drivers/${b.dataset.id}/approve`, "POST");
+          if (res.ok && statusMsg) {
+            statusMsg.textContent = res.data.message;
+            statusMsg.className = "message success";
+            fetchDrivers();
+          }
+        });
+      });
+
+      tableBody.querySelectorAll("[data-action='reject']").forEach(b => {
+        b.addEventListener("click", async () => {
+          const res = await apiRequest(`/api/admin/drivers/${b.dataset.id}/reject`, "POST");
+          if (res.ok && statusMsg) {
+            statusMsg.textContent = res.data.message;
+            statusMsg.className = "message";
+            fetchDrivers();
+          }
+        });
+      });
+
+      tableBody.querySelectorAll("[data-action='block']").forEach(b => {
+        b.addEventListener("click", async () => {
+          const res = await apiRequest(`/api/admin/drivers/${b.dataset.id}/block`, "POST");
+          if (res.ok && statusMsg) {
+            statusMsg.textContent = res.data.message;
+            statusMsg.className = "message";
+            fetchDrivers();
+          }
+        });
+      });
+    }
+
+    if (searchInput) searchInput.addEventListener("input", renderDrivers);
+    if (statusFilter) statusFilter.addEventListener("change", renderDrivers);
+
+    fetchDrivers();
+  }
+
+  /* --------------------------------------------------------------------------
+     Admin Module: Passengers Management (passengers.html)
+     -------------------------------------------------------------------------- */
+  async function initAdminPassengers() {
+    syncAdminSession();
+    const tableBody = document.getElementById("passengersTableBody");
+    const statusMsg = document.getElementById("passengersPageMessage");
+    const searchInput = document.getElementById("passengerSearchInput");
+
+    let allPassengers = [];
+
+    async function fetchPassengers() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="6" class="loading-state"><div class="spinner"></div> Loading passenger accounts...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminPassengers || "/api/admin/passengers");
+      if (res.ok && res.data && Array.isArray(res.data.passengers)) {
+        allPassengers = res.data.passengers;
+        renderPassengers();
+      } else {
+        tableBody.innerHTML = `<tr><td colspan="6" class="empty-state">Failed to load passengers.</td></tr>`;
+      }
+    }
+
+    function renderPassengers() {
+      if (!tableBody) return;
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+
+      const filtered = allPassengers.filter(p => {
+        return !query ||
+          p.full_name.toLowerCase().includes(query) ||
+          p.email.toLowerCase().includes(query);
+      });
+
+      if (filtered.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="empty-state">No passengers found.</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = filtered.map(p => {
+        const isBlocked = p.status === "blocked";
+        const statusPill = isBlocked
+          ? `<span class="pill pill-danger">Blocked</span>`
+          : `<span class="pill pill-success">Active</span>`;
+
+        const actionBtn = isBlocked
+          ? `<button class="button button-small button-success" data-action="toggle" data-id="${p.user_id}">Unblock</button>`
+          : `<button class="button button-small button-quiet" data-action="toggle" data-id="${p.user_id}">Block</button>`;
+
+        const dateStr = p.created_at ? new Date(p.created_at).toLocaleDateString() : "Recent";
+
+        return `
+          <tr>
+            <td><strong>#USR-${p.user_id}</strong></td>
+            <td><strong>${escapeHtml(p.full_name)}</strong></td>
+            <td>${escapeHtml(p.email)}</td>
+            <td>${p.total_trips || 0} rides</td>
+            <td>${statusPill}</td>
+            <td>${actionBtn}</td>
+          </tr>
+        `;
+      }).join("");
+
+      tableBody.querySelectorAll("[data-action='toggle']").forEach(b => {
+        b.addEventListener("click", async () => {
+          const res = await apiRequest(`/api/admin/passengers/${b.dataset.id}/toggle-block`, "POST");
+          if (res.ok && statusMsg) {
+            statusMsg.textContent = res.data.message;
+            statusMsg.className = "message success";
+            fetchPassengers();
+          }
+        });
+      });
+    }
+
+    if (searchInput) searchInput.addEventListener("input", renderPassengers);
+    fetchPassengers();
+  }
+
+  /* --------------------------------------------------------------------------
+     Admin Module: Vehicles Fleet (vehicles.html)
+     -------------------------------------------------------------------------- */
+  async function initAdminVehicles() {
+    syncAdminSession();
+    const tableBody = document.getElementById("adminVehiclesTableBody");
+    const statusMsg = document.getElementById("vehiclesPageMessage");
+
+    async function fetchVehicles() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="7" class="loading-state"><div class="spinner"></div> Loading vehicle fleet...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminVehicles || "/api/admin/vehicles");
+      if (res.ok && res.data && Array.isArray(res.data.vehicles)) {
+        const vehicles = res.data.vehicles;
+        if (vehicles.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="7" class="empty-state">No vehicles in registry.</td></tr>`;
+          return;
+        }
+
+        tableBody.innerHTML = vehicles.map(v => {
+          let sPill = `<span class="pill">${escapeHtml(capitalize(v.approval_status))}</span>`;
+          if (v.approval_status === "approved") sPill = `<span class="pill pill-success">Approved</span>`;
+          if (v.approval_status === "pending") sPill = `<span class="pill pill-warning">Under Review</span>`;
+          if (v.approval_status === "rejected") sPill = `<span class="pill pill-danger">Rejected</span>`;
+
+          let actions = "";
+          if (v.approval_status === "pending") {
+            actions = `
+              <button class="button button-small button-success" data-action="approve-v" data-id="${v.vehicle_id}">Approve</button>
+              <button class="button button-small button-quiet" data-action="reject-v" data-id="${v.vehicle_id}">Reject</button>
+            `;
+          } else if (v.approval_status === "approved") {
+            actions = `<button class="button button-small button-quiet" data-action="reject-v" data-id="${v.vehicle_id}">Revoke</button>`;
+          } else {
+            actions = `<button class="button button-small" data-action="approve-v" data-id="${v.vehicle_id}">Re-approve</button>`;
+          }
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(v.registration_number)}</strong></td>
+              <td>${escapeHtml(v.driver_name || "Arjun S.")}</td>
+              <td>${escapeHtml(v.model)}</td>
+              <td><span class="pill">${escapeHtml(capitalize(v.vehicle_type))}</span></td>
+              <td>${v.capacity} seats</td>
+              <td>${sPill}</td>
+              <td>${actions}</td>
+            </tr>
+          `;
+        }).join("");
+
+        tableBody.querySelectorAll("[data-action='approve-v']").forEach(b => {
+          b.addEventListener("click", async () => {
+            const res = await apiRequest(`/api/admin/vehicles/${b.dataset.id}/approve`, "POST");
+            if (res.ok && statusMsg) {
+              statusMsg.textContent = res.data.message;
+              statusMsg.className = "message success";
+              fetchVehicles();
+            }
+          });
+        });
+
+        tableBody.querySelectorAll("[data-action='reject-v']").forEach(b => {
+          b.addEventListener("click", async () => {
+            const res = await apiRequest(`/api/admin/vehicles/${b.dataset.id}/reject`, "POST");
+            if (res.ok && statusMsg) {
+              statusMsg.textContent = res.data.message;
+              statusMsg.className = "message";
+              fetchVehicles();
+            }
+          });
+        });
+      }
+    }
+
+    fetchVehicles();
+  }
+
+  /* --------------------------------------------------------------------------
+     Admin Module: Fare Rules (fares.html)
+     -------------------------------------------------------------------------- */
+  async function initAdminFares() {
+    syncAdminSession();
+    const tableBody = document.getElementById("fareRulesTableBody");
+    const statusMsg = document.getElementById("faresPageMessage");
+    const modal = document.getElementById("editFareModal");
+    const modalForm = document.getElementById("editFareForm");
+    const modalCloseBtn = document.getElementById("closeEditFareModalBtn");
+    const cancelModalBtn = document.getElementById("cancelEditFareBtn");
+
+    let currentEditingRuleId = null;
+
+    async function fetchFares() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="6" class="loading-state"><div class="spinner"></div> Loading fare rules...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminFareRules || "/api/admin/fare-rules");
+      if (res.ok && res.data && Array.isArray(res.data.fare_rules)) {
+        const rules = res.data.fare_rules;
+        tableBody.innerHTML = rules.map(r => {
+          return `
+            <tr>
+              <td><strong>${escapeHtml(capitalize(r.vehicle_type))}</strong></td>
+              <td>₹${Number(r.base_fare).toFixed(2)}</td>
+              <td>₹${Number(r.per_km_rate).toFixed(2)} / km</td>
+              <td>₹${Number(r.per_minute_rate).toFixed(2)} / min</td>
+              <td><span class="pill pill-success">Active</span></td>
+              <td>
+                <button class="button button-small" data-action="edit-fare"
+                  data-id="${r.fare_rule_id}"
+                  data-type="${r.vehicle_type}"
+                  data-base="${r.base_fare}"
+                  data-km="${r.per_km_rate}"
+                  data-min="${r.per_minute_rate}">Edit Rule</button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        tableBody.querySelectorAll("[data-action='edit-fare']").forEach(b => {
+          b.addEventListener("click", () => {
+            currentEditingRuleId = b.dataset.id;
+            const typeInput = document.getElementById("fareVehicleType");
+            const baseInput = document.getElementById("fareBaseRate");
+            const kmInput = document.getElementById("farePerKm");
+            const minInput = document.getElementById("farePerMin");
+
+            if (typeInput) typeInput.value = capitalize(b.dataset.type);
+            if (baseInput) baseInput.value = b.dataset.base;
+            if (kmInput) kmInput.value = b.dataset.km;
+            if (minInput) minInput.value = b.dataset.min;
+
+            if (modal) modal.hidden = false;
+          });
+        });
+      }
+    }
+
+    if (modalCloseBtn) modalCloseBtn.addEventListener("click", () => { if (modal) modal.hidden = true; });
+    if (cancelModalBtn) cancelModalBtn.addEventListener("click", () => { if (modal) modal.hidden = true; });
+
+    if (modalForm) {
+      modalForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const base = document.getElementById("fareBaseRate").value;
+        const km = document.getElementById("farePerKm").value;
+        const min = document.getElementById("farePerMin").value;
+
+        const res = await apiRequest(`/api/admin/fare-rules/${currentEditingRuleId}`, "PUT", {
+          base_fare: parseFloat(base),
+          per_km_rate: parseFloat(km),
+          per_minute_rate: parseFloat(min)
+        });
+
+        if (modal) modal.hidden = true;
+
+        if (res.ok && statusMsg) {
+          statusMsg.textContent = res.data.message || "Fare rule updated successfully.";
+          statusMsg.className = "message success";
+          fetchFares();
         }
       });
-    });
+    }
+
+    fetchFares();
+  }
+
+  /* --------------------------------------------------------------------------
+     Admin Module: Trips View (trips.html)
+     -------------------------------------------------------------------------- */
+  async function initAdminTrips() {
+    syncAdminSession();
+    const tableBody = document.getElementById("adminTripsTableBody");
+    const statusFilter = document.getElementById("tripStatusFilter");
+
+    let allTrips = [];
+
+    async function fetchTrips() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="7" class="loading-state"><div class="spinner"></div> Loading trips data...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.adminTrips || "/api/admin/trips");
+      if (res.ok && res.data && Array.isArray(res.data.trips)) {
+        allTrips = res.data.trips;
+        renderTrips();
+      } else {
+        tableBody.innerHTML = `<tr><td colspan="7" class="empty-state">No trips recorded.</td></tr>`;
+      }
+    }
+
+    function renderTrips() {
+      if (!tableBody) return;
+      const filter = statusFilter ? statusFilter.value : "all";
+
+      const filtered = allTrips.filter(t => {
+        if (filter === "all") return true;
+        return t.status === filter;
+      });
+
+      if (filtered.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="7" class="empty-state">No trips matching filter.</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = filtered.map(t => {
+        let sPill = `<span class="pill">${escapeHtml(capitalize(t.status))}</span>`;
+        if (t.status === "completed") sPill = `<span class="pill pill-success">Completed</span>`;
+        if (t.status === "in_progress" || t.status === "started") sPill = `<span class="pill pill-warning">In Progress</span>`;
+
+        return `
+          <tr>
+            <td><strong>#TR-${t.trip_id}</strong></td>
+            <td>${escapeHtml(t.passenger_name || "Passenger")}</td>
+            <td>${escapeHtml(t.driver_name || "Driver")}</td>
+            <td>${escapeHtml(t.pickup_location)} &rarr; ${escapeHtml(t.drop_location)}</td>
+            <td><span class="pill">${escapeHtml(capitalize(t.vehicle_type || "standard"))}</span></td>
+            <td><strong>${formatFare(t.final_fare || 0)}</strong></td>
+            <td>${sPill}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    if (statusFilter) statusFilter.addEventListener("change", renderTrips);
+    fetchTrips();
+  }
+
+  /* --------------------------------------------------------------------------
+     Super Admin Module: Dashboard Overview
+     -------------------------------------------------------------------------- */
+  async function initSuperAdminDashboard() {
+    syncSuperAdminSession();
+
+    // 1. Stats
+    try {
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.superadminStats || "/api/superadmin/stats");
+      if (res.ok && res.data) {
+        const stats = res.data;
+        const elAdmins = document.getElementById("statTotalAdmins");
+        if (elAdmins) elAdmins.textContent = stats.total_admins || 6;
+        const elActive = document.getElementById("statActiveAdmins");
+        if (elActive) elActive.textContent = stats.active_admins || 5;
+        const elGroups = document.getElementById("statGroups");
+        if (elGroups) elGroups.textContent = stats.permission_groups || 4;
+        const elEvents = document.getElementById("statEvents");
+        if (elEvents) elEvents.textContent = stats.events_today || 128;
+      }
+    } catch (e) {}
+
+    // 2. Admins summary
+    const adminSummaryBody = document.getElementById("superAdminsSummaryBody");
+    if (adminSummaryBody) {
+      try {
+        const aRes = await apiRequest(API_CONFIG.ENDPOINTS.superadminAdmins || "/api/superadmin/admins");
+        if (aRes.ok && aRes.data && Array.isArray(aRes.data.admins)) {
+          const admins = aRes.data.admins.slice(0, 4);
+          adminSummaryBody.innerHTML = admins.map(a => `
+            <tr>
+              <td><strong>${escapeHtml(a.full_name)}</strong></td>
+              <td>${escapeHtml(a.email)}</td>
+              <td>${escapeHtml(a.department || "Operations")}</td>
+              <td><span class="pill ${a.status === 'active' ? 'pill-success' : 'pill-warning'}">${capitalize(a.status)}</span></td>
+            </tr>
+          `).join("");
+        }
+      } catch (e) {}
+    }
+
+    // 3. Recent logs summary
+    const logsSummaryBody = document.getElementById("superLogsSummaryBody");
+    if (logsSummaryBody) {
+      try {
+        const lRes = await apiRequest(API_CONFIG.ENDPOINTS.superadminLogs || "/api/superadmin/logs");
+        if (lRes.ok && lRes.data && Array.isArray(lRes.data.logs)) {
+          const logs = lRes.data.logs.slice(0, 4);
+          logsSummaryBody.innerHTML = logs.map(l => `
+            <tr>
+              <td><small class="muted">${escapeHtml(l.timestamp)}</small></td>
+              <td>${escapeHtml(l.actor)}</td>
+              <td>${escapeHtml(l.action)}</td>
+              <td><span class="pill ${l.status === 'success' ? 'pill-success' : (l.status === 'warning' ? 'pill-warning' : '')}">${capitalize(l.status)}</span></td>
+            </tr>
+          `).join("");
+        }
+      } catch (e) {}
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     Super Admin Module: Administrator Accounts (admins.html)
+     -------------------------------------------------------------------------- */
+  async function initSuperAdminAdmins() {
+    syncSuperAdminSession();
+    const tableBody = document.getElementById("adminsTableBody");
+    const statusMsg = document.getElementById("adminsPageMessage");
+    const addBtn = document.getElementById("openAddAdminModalBtn");
+    const modal = document.getElementById("addAdminModal");
+    const modalForm = document.getElementById("addAdminForm");
+    const closeBtn = document.getElementById("closeAddAdminModalBtn");
+    const cancelBtn = document.getElementById("cancelAddAdminBtn");
+
+    async function fetchAdmins() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="6" class="loading-state"><div class="spinner"></div> Loading administrator accounts...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.superadminAdmins || "/api/superadmin/admins");
+      if (res.ok && res.data && Array.isArray(res.data.admins)) {
+        const admins = res.data.admins;
+        tableBody.innerHTML = admins.map(a => {
+          const isAct = a.status === "active";
+          const isSuper = a.role === "super_admin";
+
+          return `
+            <tr>
+              <td><strong>#ADM-${a.user_id}</strong></td>
+              <td><strong>${escapeHtml(a.full_name)}</strong></td>
+              <td>${escapeHtml(a.email)}</td>
+              <td>${escapeHtml(a.department || "Operations")}</td>
+              <td><span class="pill ${isAct ? 'pill-success' : 'pill-warning'}">${capitalize(a.status)}</span></td>
+              <td>
+                ${isSuper
+                  ? `<span class="pill pill-purple">System Owner</span>`
+                  : `<button class="button button-small ${isAct ? 'button-quiet' : 'button-success'}" data-action="toggle-admin" data-id="${a.user_id}">${isAct ? 'Deactivate' : 'Activate'}</button>`
+                }
+              </td>
+            </tr>
+          `;
+        }).join("");
+
+        tableBody.querySelectorAll("[data-action='toggle-admin']").forEach(b => {
+          b.addEventListener("click", async () => {
+            const res = await apiRequest(`/api/superadmin/admins/${b.dataset.id}/toggle`, "POST");
+            if (res.ok && statusMsg) {
+              statusMsg.textContent = res.data.message;
+              statusMsg.className = "message success";
+              fetchAdmins();
+            }
+          });
+        });
+      }
+    }
+
+    if (addBtn) addBtn.addEventListener("click", () => { if (modal) modal.hidden = false; });
+    if (closeBtn) closeBtn.addEventListener("click", () => { if (modal) modal.hidden = true; });
+    if (cancelBtn) cancelBtn.addEventListener("click", () => { if (modal) modal.hidden = true; });
+
+    if (modalForm) {
+      modalForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("adminFullName").value.trim();
+        const email = document.getElementById("adminEmail").value.trim();
+        const dept = document.getElementById("adminDepartment").value;
+        const pass = document.getElementById("adminPassword").value;
+
+        const res = await apiRequest(API_CONFIG.ENDPOINTS.superadminAdmins || "/api/superadmin/admins", "POST", {
+          full_name: name,
+          email: email,
+          department: dept,
+          password: pass
+        });
+
+        if (modal) modal.hidden = true;
+        modalForm.reset();
+
+        if (res.ok && statusMsg) {
+          statusMsg.textContent = res.data.message;
+          statusMsg.className = "message success";
+          fetchAdmins();
+        } else if (statusMsg) {
+          statusMsg.textContent = (res.data && res.data.message) || "Could not add administrator.";
+          statusMsg.className = "message error";
+        }
+      });
+    }
+
+    fetchAdmins();
+  }
+
+  /* --------------------------------------------------------------------------
+     Super Admin Module: Permissions Matrix (permissions.html)
+     -------------------------------------------------------------------------- */
+  function initSuperAdminPermissions() {
+    syncSuperAdminSession();
+    // Static declarative matrix rendered in permissions.html
+  }
+
+  /* --------------------------------------------------------------------------
+     Super Admin Module: System Settings (settings.html)
+     -------------------------------------------------------------------------- */
+  async function initSuperAdminSettings() {
+    syncSuperAdminSession();
+    const form = document.getElementById("settingsForm");
+    const statusMsg = document.getElementById("settingsPageMessage");
+
+    try {
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.superadminSettings || "/api/superadmin/settings");
+      if (res.ok && res.data && res.data.settings) {
+        const s = res.data.settings;
+        const elName = document.getElementById("settingPlatformName");
+        if (elName) elName.value = s.platform_name || "";
+
+        const elComm = document.getElementById("settingCommission");
+        if (elComm) elComm.value = s.driver_commission_percentage || 15;
+
+        const elRadius = document.getElementById("settingRadius");
+        if (elRadius) elRadius.value = s.max_search_radius_km || 15;
+
+        const elEmail = document.getElementById("settingSupportEmail");
+        if (elEmail) elEmail.value = s.support_email || "";
+
+        const elMaint = document.getElementById("settingMaintenance");
+        if (elMaint) elMaint.checked = Boolean(s.maintenance_mode);
+
+        const elBooking = document.getElementById("settingBookingEnabled");
+        if (elBooking) elBooking.checked = Boolean(s.booking_enabled);
+      }
+    } catch (e) {}
+
+    if (form) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const payload = {
+          platform_name: document.getElementById("settingPlatformName").value,
+          driver_commission_percentage: Number(document.getElementById("settingCommission").value),
+          max_search_radius_km: Number(document.getElementById("settingRadius").value),
+          support_email: document.getElementById("settingSupportEmail").value,
+          maintenance_mode: document.getElementById("settingMaintenance").checked,
+          booking_enabled: document.getElementById("settingBookingEnabled").checked
+        };
+
+        const res = await apiRequest(API_CONFIG.ENDPOINTS.superadminSettings || "/api/superadmin/settings", "PUT", payload);
+        if (res.ok && statusMsg) {
+          statusMsg.textContent = res.data.message || "System settings saved successfully.";
+          statusMsg.className = "message success";
+        }
+      });
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     Super Admin Module: System Logs (logs.html)
+     -------------------------------------------------------------------------- */
+  async function initSuperAdminLogs() {
+    syncSuperAdminSession();
+    const tableBody = document.getElementById("logsTableBody");
+    const filterInput = document.getElementById("logSearchInput");
+
+    let allLogs = [];
+
+    async function fetchLogs() {
+      if (!tableBody) return;
+      tableBody.innerHTML = `<tr><td colspan="5" class="loading-state"><div class="spinner"></div> Loading system audit logs...</td></tr>`;
+
+      const res = await apiRequest(API_CONFIG.ENDPOINTS.superadminLogs || "/api/superadmin/logs");
+      if (res.ok && res.data && Array.isArray(res.data.logs)) {
+        allLogs = res.data.logs;
+        renderLogs();
+      } else {
+        tableBody.innerHTML = `<tr><td colspan="5" class="empty-state">No audit logs found.</td></tr>`;
+      }
+    }
+
+    function renderLogs() {
+      if (!tableBody) return;
+      const query = filterInput ? filterInput.value.trim().toLowerCase() : "";
+
+      const filtered = allLogs.filter(l => {
+        return !query ||
+          l.actor.toLowerCase().includes(query) ||
+          l.action.toLowerCase().includes(query) ||
+          (l.details && l.details.toLowerCase().includes(query));
+      });
+
+      if (filtered.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="5" class="empty-state">No matching log records.</td></tr>`;
+        return;
+      }
+
+      tableBody.innerHTML = filtered.map(l => {
+        let pillClass = "";
+        if (l.status === "success") pillClass = "pill-success";
+        if (l.status === "warning") pillClass = "pill-warning";
+        if (l.status === "failed") pillClass = "pill-danger";
+
+        return `
+          <tr>
+            <td><code>${escapeHtml(l.timestamp)}</code></td>
+            <td><strong>${escapeHtml(l.actor)}</strong></td>
+            <td>${escapeHtml(l.action)}</td>
+            <td><span class="pill ${pillClass}">${escapeHtml(capitalize(l.status))}</span></td>
+            <td><small class="muted">${escapeHtml(l.details || "")}</small></td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    if (filterInput) filterInput.addEventListener("input", renderLogs);
+    fetchLogs();
   }
 
   function escapeHtml(str) {
@@ -1409,33 +2302,77 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     updateDataModeBadge();
-    syncDriverSession();
 
     const role = document.body ? document.body.dataset.role : "";
+    const page = document.body ? document.body.dataset.page : "";
 
+    // Driver flow
     if (role === "driver-login") {
       initDriverLogin();
       return;
     }
 
     if (role === "driver") {
+      syncDriverSession();
       initAvailabilityControls();
       initRideRequestActions();
       initCompleteTripModal();
       initVehicleModals();
 
-      // Refresh earnings button on earnings.html
       const refreshEarningsBtn = document.getElementById("refreshEarningsBtn");
       if (refreshEarningsBtn) {
         refreshEarningsBtn.addEventListener("click", fetchDriverEarnings);
       }
 
-      // Initial data fetches
       fetchDriverRequests();
       fetchDriverVehicles();
       fetchDriverEarnings();
+      return;
     }
 
-    initAdminAndSuperAdminPlaceholders();
+    // Admin module routes
+    if (role === "admin") {
+      syncAdminSession();
+      if (page === "admin-dashboard" || !page) {
+        initAdminDashboard();
+      }
+      if (page === "admin-drivers") {
+        initAdminDrivers();
+      }
+      if (page === "admin-passengers") {
+        initAdminPassengers();
+      }
+      if (page === "admin-vehicles") {
+        initAdminVehicles();
+      }
+      if (page === "admin-fares") {
+        initAdminFares();
+      }
+      if (page === "admin-trips") {
+        initAdminTrips();
+      }
+      return;
+    }
+
+    // Super Admin module routes
+    if (role === "superadmin") {
+      syncSuperAdminSession();
+      if (page === "superadmin-dashboard" || !page) {
+        initSuperAdminDashboard();
+      }
+      if (page === "superadmin-admins") {
+        initSuperAdminAdmins();
+      }
+      if (page === "superadmin-permissions") {
+        initSuperAdminPermissions();
+      }
+      if (page === "superadmin-settings") {
+        initSuperAdminSettings();
+      }
+      if (page === "superadmin-logs") {
+        initSuperAdminLogs();
+      }
+      return;
+    }
   });
 })();
