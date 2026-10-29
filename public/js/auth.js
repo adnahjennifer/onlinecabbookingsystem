@@ -320,10 +320,7 @@ function initRegistrationForm() {
 
         // Loading state
         isSubmitting = true;
-        const originalBtnText = submitBtn.textContent;
-        submitBtn.disabled = true;
-        submitBtn.setAttribute("aria-busy", "true");
-        submitBtn.textContent = "Creating account...";
+        setButtonLoading(submitBtn, true, "Creating account...");
 
         if (formMessage) {
             formMessage.hidden = true;
@@ -400,9 +397,7 @@ function initRegistrationForm() {
             }
         } finally {
             isSubmitting = false;
-            submitBtn.disabled = false;
-            submitBtn.removeAttribute("aria-busy");
-            submitBtn.textContent = originalBtnText;
+            setButtonLoading(submitBtn, false);
         }
     });
 }
@@ -475,10 +470,7 @@ function initLoginForm() {
 
         // Loading state
         isSubmitting = true;
-        const originalBtnText = submitBtn.textContent;
-        submitBtn.disabled = true;
-        submitBtn.setAttribute("aria-busy", "true");
-        submitBtn.textContent = "Logging in...";
+        setButtonLoading(submitBtn, true, "Logging in...");
 
         if (formMessage) {
             formMessage.hidden = true;
@@ -532,24 +524,26 @@ function initLoginForm() {
             }
         } finally {
             isSubmitting = false;
-            submitBtn.disabled = false;
-            submitBtn.removeAttribute("aria-busy");
-            submitBtn.textContent = originalBtnText;
+            setButtonLoading(submitBtn, false);
         }
     });
 }
 
 /* ==========================================================================
-   Registration Success Banner on Login Page (?registered=1)
+   Registration Success / Session Expired Banner on Login Page
    ========================================================================== */
 
 function checkRegisteredUrlBanner() {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("registered") === "1") {
-        const formMessage = document.getElementById("formMessage");
-        if (formMessage) {
-            showMessage(formMessage, "Account created. Please log in.", "success");
-        }
+    const formMessage = document.getElementById("formMessage");
+    if (!formMessage) {
+        return;
+    }
+
+    if (params.get("expired") === "1") {
+        showMessage(formMessage, "Your session has expired. Please log in again.", "error");
+    } else if (params.get("registered") === "1") {
+        showMessage(formMessage, "Account created successfully. Please log in.", "success");
     }
 }
 

@@ -1560,10 +1560,222 @@ async function apiRequest(path, method = "GET", body = null) {
     // Auto-redirect on 401 Unauthorized (unless it's an intentional login/register check)
     if (result && result.status === 401 && !path.includes("/login") && !path.includes("/register")) {
         clearSession();
-        window.location.replace("login.html");
+        window.location.replace("login.html?expired=1");
     }
 
     return result;
+}
+
+/* ==========================================================================
+   Shared UI Helpers: Spinners, Loading, Error, Empty & Modal Utilities (Day 5)
+   ========================================================================== */
+
+/**
+ * Creates an inline spinner element.
+ * @param {boolean} [isDark=false]
+ * @param {boolean} [isLarge=false]
+ * @returns {HTMLSpanElement}
+ */
+function createSpinner(isDark = false, isLarge = false) {
+    const spinner = document.createElement("span");
+    spinner.className = "spinner" + (isDark ? " spinner-dark" : "") + (isLarge ? " spinner-large" : "");
+    spinner.setAttribute("aria-hidden", "true");
+    return spinner;
+}
+
+/**
+ * Controls button loading state safely with disabled and aria-busy attributes.
+ * Preserves original text content in dataset so it can be restored reliably in finally.
+ * @param {HTMLButtonElement|null} button
+ * @param {boolean} isLoading
+ * @param {string} [loadingText="Loading..."]
+ */
+function setButtonLoading(button, isLoading, loadingText = "Loading...") {
+    if (!button) return;
+
+    if (isLoading) {
+        if (!button.dataset.originalText) {
+            button.dataset.originalText = button.textContent;
+        }
+        button.disabled = true;
+        button.setAttribute("aria-busy", "true");
+        button.textContent = "";
+        button.appendChild(createSpinner(false));
+        button.appendChild(document.createTextNode(" " + loadingText));
+    } else {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        if (button.dataset.originalText) {
+            button.textContent = button.dataset.originalText;
+        }
+    }
+}
+
+/**
+ * Renders a full container loading indicator with spinner and aria-busy.
+ * @param {HTMLElement|null} container
+ * @param {string} [text="Loading data..."]
+ */
+function showContainerLoading(container, text = "Loading data...") {
+    if (!container) return;
+    container.textContent = "";
+    container.setAttribute("aria-busy", "true");
+
+    const loadingDiv = document.createElement("div");
+    loadingDiv.className = "loading-container";
+    loadingDiv.setAttribute("role", "status");
+
+    loadingDiv.appendChild(createSpinner(true, true));
+
+    const p = document.createElement("p");
+    p.textContent = text;
+    loadingDiv.appendChild(p);
+
+    container.appendChild(loadingDiv);
+}
+
+/**
+ * Renders an inline error message with an optional Retry button.
+ * Safe from XSS: sets textContent only.
+ * @param {HTMLElement|null} container
+ * @param {string} message
+ * @param {Function|null} [onRetry=null]
+ */
+function showContainerError(container, message, onRetry = null) {
+    if (!container) return;
+    container.textContent = "";
+    container.removeAttribute("aria-busy");
+
+    const errorDiv = document.createElement("div");
+    errorDiv.className = "inline-error-card";
+    errorDiv.setAttribute("role", "alert");
+
+    const p = document.createElement("p");
+    p.textContent = message || "An unexpected error occurred.";
+    errorDiv.appendChild(p);
+
+    if (typeof onRetry === "function") {
+        const retryBtn = document.createElement("button");
+        retryBtn.type = "button";
+        retryBtn.className = "retry-button";
+        retryBtn.textContent = "Retry";
+        retryBtn.addEventListener("click", () => {
+            onRetry();
+        });
+        errorDiv.appendChild(retryBtn);
+    }
+
+    container.appendChild(errorDiv);
+}
+
+/**
+ * Renders a standard empty state with icon, message, and optional CTA button.
+ * Safe from XSS: sets textContent only.
+ * @param {HTMLElement|null} container
+ * @param {Object} options
+ * @param {string} [options.icon="📭"]
+ * @param {string} [options.title=""]
+ * @param {string} options.message
+ * @param {string} [options.ctaText]
+ * @param {Function} [options.ctaCallback]
+ */
+function showContainerEmpty(container, options = {}) {
+    if (!container) return;
+    container.textContent = "";
+    container.removeAttribute("aria-busy");
+
+    const emptyDiv = document.createElement("div");
+    emptyDiv.className = "empty-state";
+
+    const iconSpan = document.createElement("span");
+    iconSpan.className = "empty-state-icon";
+    iconSpan.setAttribute("aria-hidden", "true");
+    iconSpan.textContent = options.icon || "📭";
+    emptyDiv.appendChild(iconSpan);
+
+    if (options.title) {
+        const titleEl = document.createElement("div");
+        titleEl.className = "empty-state-title";
+        titleEl.textContent = options.title;
+        emptyDiv.appendChild(titleEl);
+    }
+
+    const p = document.createElement("p");
+    p.textContent = options.message || "No records found.";
+    emptyDiv.appendChild(p);
+
+    if (options.ctaText && typeof options.ctaCallback === "function") {
+        const ctaBtn = document.createElement("button");
+        ctaBtn.type = "button";
+        ctaBtn.className = "button";
+        ctaBtn.textContent = options.ctaText;
+        ctaBtn.addEventListener("click", (event) => {
+            event.preventDefault();
+            options.ctaCallback();
+        });
+        emptyDiv.appendChild(ctaBtn);
+    }
+
+    container.appendChild(emptyDiv);
+}
+
+/**
+ * Focus-trapping modal controller that closes on Escape and backdrop click.
+ * @param {HTMLElement} modal
+ * @param {Function} onClose
+ * @returns {Function} Teardown/cleanup function
+ */
+function trapModalFocus(modal, onClose) {
+    if (!modal) return () => {};
+
+    const focusableSelectors = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+    function handleKeyDown(event) {
+        if (modal.hidden) return;
+
+        if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+            return;
+        }
+
+        if (event.key === "Tab") {
+            const focusables = Array.from(modal.querySelectorAll(focusableSelectors)).filter(
+                (el) => !el.disabled && el.offsetParent !== null
+            );
+
+            if (focusables.length === 0) return;
+
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+
+            if (event.shiftKey) {
+                if (document.activeElement === first || !modal.contains(document.activeElement)) {
+                    event.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last || !modal.contains(document.activeElement)) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            }
+        }
+    }
+
+    function handleBackdropClick(event) {
+        if (event.target === modal) {
+            onClose();
+        }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    modal.addEventListener("click", handleBackdropClick);
+
+    return function cleanup() {
+        document.removeEventListener("keydown", handleKeyDown);
+        modal.removeEventListener("click", handleBackdropClick);
+    };
 }
 
 /* ==========================================================================
@@ -1645,4 +1857,10 @@ if (typeof window !== "undefined") {
     window.showMessage = showMessage;
     window.initNavigation = initNavigation;
     window.getMockUsers = getMockUsers;
+    window.createSpinner = createSpinner;
+    window.setButtonLoading = setButtonLoading;
+    window.showContainerLoading = showContainerLoading;
+    window.showContainerError = showContainerError;
+    window.showContainerEmpty = showContainerEmpty;
+    window.trapModalFocus = trapModalFocus;
 }
