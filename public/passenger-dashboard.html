@@ -173,16 +173,43 @@
 <!-- In-Page Booking Cancellation Modal -->
 <div id="cancelBookingModal" class="confirm-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancelModalTitle" hidden>
     <div class="confirm-panel">
-        <h3 id="cancelModalTitle">Cancel Booking</h3>
+        <h3 id="cancelModalTitle">Cancel Ride Booking</h3>
 
         <p>Are you sure you want to cancel this booking?</p>
-        <p id="cancelModalWarning" style="color: #627d98; font-size: 13px;">This action cannot be undone.</p>
+        <p id="cancelModalWarning" style="color: #627d98; font-size: 13px; margin-top: -6px;">This action cannot be undone.</p>
 
         <div id="cancelModalMessage" class="message" role="status" aria-live="polite" hidden></div>
 
+        <div class="confirm-summary-list" id="cancelSummaryList">
+            <div class="confirm-summary-item">
+                <strong>Booking ID:</strong>
+                <span id="cancelBookingId"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Pickup:</strong>
+                <span id="cancelPickup"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Destination:</strong>
+                <span id="cancelDestination"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Vehicle Type:</strong>
+                <span id="cancelVehicleType" style="text-transform: capitalize;"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Estimated Fare:</strong>
+                <span id="cancelFare" class="fare-highlight"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Booked At:</strong>
+                <span id="cancelTime"></span>
+            </div>
+        </div>
+
         <div class="confirm-actions">
-            <button class="button danger" type="button" id="confirmCancelBtn">Yes, Cancel Booking</button>
-            <button class="button secondary" type="button" id="abortCancelBtn">No, Keep Booking</button>
+            <button class="button danger" type="button" id="confirmCancelBtn">Yes, cancel</button>
+            <button class="button secondary" type="button" id="abortCancelBtn">Keep booking</button>
         </div>
     </div>
 </div>
