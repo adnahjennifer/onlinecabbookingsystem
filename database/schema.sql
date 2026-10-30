@@ -96,3 +96,35 @@ CREATE TABLE IF NOT EXISTS trips (
     FOREIGN KEY (vehicle_id) REFERENCES vehicles(vehicle_id),
     CHECK (final_fare IS NULL OR final_fare >= 0)
 ) ENGINE=InnoDB;
+
+-- 7. Driver rejections for passenger ride requests
+CREATE TABLE IF NOT EXISTS driver_rejections (
+    rejection_id INT AUTO_INCREMENT PRIMARY KEY,
+    request_id INT NOT NULL,
+    driver_id INT NOT NULL,
+    rejected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE (request_id, driver_id),
+
+    FOREIGN KEY (request_id)
+        REFERENCES ride_requests(request_id),
+
+    FOREIGN KEY (driver_id)
+        REFERENCES driver_profiles(driver_id)
+) ENGINE=InnoDB;
+
+-- 8. Notifications for passengers
+CREATE TABLE IF NOT EXISTS notifications (
+    notification_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    request_id INT NOT NULL,
+    message VARCHAR(255) NOT NULL,
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(user_id),
+
+    FOREIGN KEY (request_id)
+        REFERENCES ride_requests(request_id)
+) ENGINE=InnoDB;
