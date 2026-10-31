@@ -1501,7 +1501,15 @@ async function apiRequest(path, method = "GET", body = null) {
 
             // If the server did not return a JSON object, construct friendly structured error data
             if (!data || typeof data !== "object") {
-                if (response.status === 404) {
+                } else if (response.status === 405) {
+                    data = {
+                        error: {
+                            code: "METHOD_NOT_ALLOWED",
+                            message: "Method Not Allowed (405). This occurs when running through a static server (such as VS Code Live Server). Please open http://localhost:3000/login.html with the Node backend running."
+                        },
+                        message: "Method Not Allowed (405). Please open http://localhost:3000/login.html instead of a static server (Live Server)."
+                    };
+                } else if (response.status === 404) {
                     data = {
                         error: { code: "NOT_FOUND", message: "The requested service or page was not found (404)." },
                         message: "The requested service was not found."
@@ -1797,6 +1805,41 @@ function showMessage(element, text, type) {
  * Hides login/register and reveals dashboard/logout when logged in.
  */
 function initNavigation() {
+    // Port detection: Alert developer/user if viewing through a static server (e.g. VS Code Live Server 5500)
+    if (typeof window !== "undefined" && window.location && window.location.port && window.location.port !== "3000") {
+        if (!document.getElementById("cabgoPortWarningBanner") && document.body) {
+            const warningBanner = document.createElement("div");
+            warningBanner.id = "cabgoPortWarningBanner";
+            warningBanner.style.background = "#fff3cd";
+            warningBanner.style.color = "#856404";
+            warningBanner.style.borderBottom = "2px solid #ffeeba";
+            warningBanner.style.padding = "10px 16px";
+            warningBanner.style.textAlign = "center";
+            warningBanner.style.fontSize = "13px";
+            warningBanner.style.fontWeight = "600";
+            warningBanner.style.position = "sticky";
+            warningBanner.style.top = "0";
+            warningBanner.style.zIndex = "9999";
+
+            const currentFile = window.location.pathname.split("/").pop() || "login.html";
+            const targetUrl = `http://localhost:3000/${currentFile}`;
+
+            const textPart = document.createTextNode(
+                `⚠️ Note: You are viewing on port ${window.location.port} (static server). The CabGo server runs on port 3000. `
+            );
+            const link = document.createElement("a");
+            link.href = targetUrl;
+            link.textContent = `Open http://localhost:3000/${currentFile}`;
+            link.style.color = "#533f03";
+            link.style.textDecoration = "underline";
+            link.style.marginLeft = "6px";
+
+            warningBanner.appendChild(textPart);
+            warningBanner.appendChild(link);
+            document.body.insertBefore(warningBanner, document.body.firstChild);
+        }
+    }
+
     const session = getSession();
     const guestLinks = document.querySelectorAll('[data-nav="guest"]');
     const authLinks = document.querySelectorAll('[data-nav="auth"]');
