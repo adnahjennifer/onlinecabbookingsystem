@@ -1544,3 +1544,44 @@ textarea {
         padding: 16px;
     }
 }
+
+/* Dashboard layout responsiveness */
+.container:has(> .stats) {
+    width: min(94%, 1440px);
+    max-width: 1440px;
+}
+
+.container:has(> .stats) > .card,
+.container:has(> .stats) > section {
+    min-width: 0;
+}
+
+.container:has(> .stats) .stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+    .container:has(> .stats) {
+        width: min(94%, 1100px);
+    }
+
+    .container:has(> .stats) .stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .container:has(> .stats) {
+        width: min(94%, 560px);
+        margin: 24px auto;
+    }
+
+    .container:has(> .stats) .stats {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .container:has(> .stats) .card {
+        padding: 18px;
+    }
+}
