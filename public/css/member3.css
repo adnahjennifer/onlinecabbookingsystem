@@ -138,3 +138,34 @@ html,body{max-width:100%;overflow-x:hidden}
   .panel-heading{align-items:flex-start}
 }
 @media(max-width:380px){.stats{grid-template-columns:1fr}.page-heading h1{font-size:21px}}
+
+/* Dashboard width and responsive spacing */
+.main{
+  flex:1 1 auto;
+  width:auto;
+  max-width:1680px;
+  margin:0 auto;
+}
+
+.stats,.two-col{
+  width:100%;
+}
+
+@media(min-width:1440px){
+  .main{padding-left:42px;padding-right:42px}
+}
+
+@media(max-width:900px){
+  .main{max-width:none}
+  .page-heading>div:first-child{min-width:0}
+}
+
+@media(max-width:620px){
+  .page-heading{gap:14px}
+  .page-heading>div:first-child{flex:1 1 100%}
+  .page-heading>.button,
+  .page-heading>.mode-badge,
+  .page-heading>.availability-control{width:100%}
+  .availability-control{justify-content:flex-start}
+  .panel-heading>a{max-width:100%;white-space:normal}
+}
