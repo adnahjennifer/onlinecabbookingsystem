@@ -209,32 +209,37 @@
         initVisibilityHandling();
 
         // 2. Real session verification with GET /api/me
+        // Only log out on a genuine 401 — 500 or network errors keep the cached session.
         try {
             const meRes = await apiRequest(API_CONFIG.ENDPOINTS.me || "/api/me", "GET");
-            if (!meRes.ok || meRes.status === 401) {
+
+            if (meRes.status === 401) {
                 clearSession();
                 window.location.replace("login.html?expired=1");
                 return;
             }
 
-            const verifiedUser = meRes.data && meRes.data.user ? normalizeUser(meRes.data.user) : null;
-            if (!verifiedUser || (verifiedUser.role && verifiedUser.role !== "passenger")) {
-                const roleRedirects = {
-                    driver: "driver/dashboard.html",
-                    admin: "admin/dashboard.html",
-                    super_admin: "superadmin/dashboard.html"
-                };
-                window.location.replace((verifiedUser && roleRedirects[verifiedUser.role]) || "login.html");
-                return;
+            if (meRes.ok && meRes.data && meRes.data.user) {
+                const verifiedUser = normalizeUser(meRes.data.user);
+                if (verifiedUser && verifiedUser.role && verifiedUser.role !== "passenger") {
+                    const roleRedirects = {
+                        driver: "driver/dashboard.html",
+                        admin: "admin/dashboard.html",
+                        super_admin: "superadmin/dashboard.html"
+                    };
+                    window.location.replace(roleRedirects[verifiedUser.role] || "login.html");
+                    return;
+                }
+                if (verifiedUser) {
+                    saveSession(verifiedUser, session.token || null);
+                    if (greetingEl) {
+                        greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
+                    }
+                }
             }
-
-            // Sync verified user data in session storage
-            saveSession(verifiedUser, session.token || null);
-            if (greetingEl) {
-                greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
-            }
+            // 500 / network error (status 0): silently keep cached session and load dashboard
         } catch (err) {
-            // Network failure will be handled by apiRequest or offline states
+            // Network failure — keep cached session, continue loading dashboard
         }
 
         // Initial fetch of bookings and active status with loading indicators
@@ -631,15 +636,10 @@
                 vehicle_type: pendingRide.vehicle_type
             };
 
-            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests";
+            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || "/api/ride-requests";
             const response = await apiRequest(endpoint, "POST", payload);
 
-            if (response.status === 401) {
-                clearSession();
-                window.location.replace("login.html?expired=1");
-                return;
-            }
-
+            // 401 handled globally by apiRequest
             if (!response.ok) {
                 const errorMsg = getErrorMessage(
                     response.data,
@@ -754,15 +754,10 @@
         }
 
         try {
-            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests/mine";
+            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || "/api/ride-requests/mine";
             const response = await apiRequest(endpoint, "GET");
 
-            if (response.status === 401) {
-                clearSession();
-                window.location.replace("login.html?expired=1");
-                return;
-            }
-
+            // 401 is handled globally by apiRequest (auto-redirects to login)
             if (!response.ok) {
                 const bookingMsg = document.getElementById("bookingMessage");
                 const errorText = getErrorMessage(
@@ -972,9 +967,8 @@
             detailsDiv.appendChild(waitingBox);
         }
 
-        // Cancellation Button: only allowed for cancellable statuses ('requested' or 'pending')
-        // Backend restricts cancellation to 'requested'; trips already started/completed cannot be cancelled
-        if (activeBooking.status === "requested" || activeBooking.status === "pending") {
+        // Cancellation Button: only allowed when status is 'requested' — server only cancels requested rides
+        if (activeBooking.status === "requested") {
             const cancelBtn = document.createElement("button");
             cancelBtn.type = "button";
             cancelBtn.className = "button danger";

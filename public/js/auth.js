@@ -514,25 +514,6 @@ function initLoginForm() {
                 passwordInput.value = "";
                 passwordInput.focus();
             } else {
-                // Reliable fallback for demo passenger credentials if server returns error
-                const emailClean = emailInput.value.trim().toLowerCase();
-                if ((emailClean === "alex@example.com" || emailClean === "passenger@example.com") && passwordInput.value === "Password123") {
-                    const demoPassenger = {
-                        id: 1,
-                        user_id: 1,
-                        name: "Alex",
-                        full_name: "Alex",
-                        email: emailClean,
-                        role: "passenger"
-                    };
-                    saveSession(demoPassenger, "demo-passenger-token-" + Date.now());
-                    showMessage(formMessage, "Login successful! Opening dashboard...", "success");
-                    setTimeout(() => {
-                        window.location.href = "passenger-dashboard.html";
-                    }, 500);
-                    return;
-                }
-
                 const message = getErrorMessage(
                     response.data,
                     response.status === 0

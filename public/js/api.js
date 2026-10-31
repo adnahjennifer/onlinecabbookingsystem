@@ -18,6 +18,9 @@ const API_CONFIG = {
         rideRequests: "/api/ride-requests",
         myRideRequests: "/api/ride-requests/mine",
         cancelRideRequest: "/api/ride-requests/:request_id/cancel",
+        // Notifications (Member 2 - added backend/API.md)
+        notifications: "/api/notifications",
+        markNotificationRead: "/api/notifications/:notification_id/read",
         // Backward-compatible aliases for Day 2/3 references
         searchRides: "/api/rides/search",
         bookings: "/api/ride-requests",
@@ -1567,11 +1570,6 @@ async function apiRequest(path, method = "GET", body = null) {
             "Accept": "application/json"
         };
 
-        const session = getSession();
-        if (session && session.token) {
-            headers["Authorization"] = "Bearer " + session.token;
-        }
-
         const options = {
             method: method.toUpperCase(),
             headers: headers,
@@ -1611,14 +1609,6 @@ async function apiRequest(path, method = "GET", body = null) {
                     message: "Cannot reach the server. Check your connection and try again."
                 }
             };
-        }
-
-        // Automatic seamless fallback to mock simulator when the backend is not running (status 0 = network error),
-        // returns 501 Not Implemented, or returns 500 Internal Server Error (e.g. database down, unconfigured, or connection error).
-        // Do NOT fall back on 404 — a real 404 means the route exists but the resource was not found.
-        if (!result.ok && (result.status === 500 || result.status === 501 || result.status === 0)) {
-            console.warn(`[CabGo API] Endpoint ${method} ${path} returned HTTP ${result.status}. Falling back to mock simulation.`);
-            result = await mockApiRequest(path, method, body);
         }
     }
 
