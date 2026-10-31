@@ -1672,7 +1672,7 @@
             <td><code>${escapeHtml(d.license_number)}</code><br><small class="muted">Exp: ${escapeHtml(d.license_expiry || "N/A")}</small></td>
             <td>${vPill}</td>
             <td>${aPill}</td>
-            <td>${d.rating ? `<span class="star">★</span> ${d.rating.toFixed(1)}` : '<span class="muted">New</span>'}</td>
+            <td>${d.rating != null ? `<span class="star">★</span> ${Number(d.rating).toFixed(1)}` : '<span class="muted">New</span>'}</td>
             <td>${actions}</td>
           </tr>
         `;
@@ -2207,7 +2207,7 @@
         if (elRadius) elRadius.value = s.max_search_radius_km || 15;
 
         const elEmail = document.getElementById("settingSupportEmail");
-        if (elEmail) elEmail.value = s.support_email || "";
+        if (elEmail) elEmail.value = s.support_email || "support@cabgo.local";
 
         const elMaint = document.getElementById("settingMaintenance");
         if (elMaint) elMaint.checked = Boolean(s.maintenance_mode);

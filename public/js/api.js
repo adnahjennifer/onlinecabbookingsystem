@@ -463,6 +463,41 @@ function showContainerError(container, message, retryFn = null) {
  */
 function showContainerEmpty(container, title, description = "", actionLabel = "", actionHref = "") {
     if (!container) return;
+    if (title && typeof title === "object") {
+        const options = title;
+        const wrap = document.createElement("div");
+        wrap.className = "state-container empty-state";
+
+        const icon = document.createElement("div");
+        icon.className = "empty-state-icon";
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = options.icon || "🚕";
+        wrap.appendChild(icon);
+
+        const heading = document.createElement("h3");
+        heading.className = "empty-state-title";
+        heading.textContent = options.title || "Nothing to display";
+        wrap.appendChild(heading);
+
+        if (options.message) {
+            const message = document.createElement("p");
+            message.textContent = options.message;
+            wrap.appendChild(message);
+        }
+
+        if (options.ctaText && typeof options.ctaCallback === "function") {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "button button-small";
+            button.style.marginTop = "12px";
+            button.textContent = options.ctaText;
+            button.addEventListener("click", options.ctaCallback);
+            wrap.appendChild(button);
+        }
+
+        container.replaceChildren(wrap);
+        return;
+    }
     let html = `
         <div class="state-container empty-state">
             <div class="empty-state-icon" aria-hidden="true">🚕</div>

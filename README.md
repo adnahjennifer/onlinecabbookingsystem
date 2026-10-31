@@ -48,6 +48,13 @@ CabGo is a full-stack Online Cab Booking System built as a Web Technology mini-p
    > The Node.js server at `http://localhost:3000` serves both the frontend pages and the backend API endpoints. Always open:
    > **`http://localhost:3000/login.html`** or **`http://localhost:3000/index.html`**
 
+To create an administrator for local testing, provision one after configuring the
+database credentials:
+```bash
+INITIAL_ADMIN_EMAIL=admin@example.com INITIAL_ADMIN_PASSWORD='Demo2026!' \
+INITIAL_ADMIN_NAME='CabGo Admin' npm run provision:admin
+```
+
 ---
 
 ## Passenger Portal Features (Member 1)

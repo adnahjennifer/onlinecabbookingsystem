@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
     platform_name VARCHAR(100) NOT NULL DEFAULT 'CabGo',
     driver_commission_percentage DECIMAL(5,2) NOT NULL DEFAULT 15.00,
     max_search_radius_km DECIMAL(6,2) NOT NULL DEFAULT 15.00,
-    support_email VARCHAR(255) NOT NULL DEFAULT '',
+    support_email VARCHAR(255) NOT NULL DEFAULT 'support@cabgo.local',
     maintenance_mode BOOLEAN NOT NULL DEFAULT FALSE,
     booking_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     updated_by INT NULL,
