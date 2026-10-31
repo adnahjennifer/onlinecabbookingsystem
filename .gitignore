@@ -1,6 +1,8 @@
 
 node_modules/
 .env
+.env.*
+!.env.example
 .DS_Store
 cookies.txt
 driver-cookies.txt

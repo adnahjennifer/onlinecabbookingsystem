@@ -3,6 +3,10 @@
 -- Shared database schema
 -- Database: cab_booking_system
 
+CREATE DATABASE IF NOT EXISTS cab_booking_system
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
 USE cab_booking_system;
 
 -- 1. All system users

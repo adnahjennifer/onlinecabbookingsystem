@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 
 const SESSION_COOKIE = 'cab_session';
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;

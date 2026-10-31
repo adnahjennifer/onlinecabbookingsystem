@@ -1,92 +1,198 @@
-# Online Cab Booking System (CabGo)
+# CabGo Online Cab Booking System
 
-CabGo is a full-stack Online Cab Booking System built as a Web Technology mini-project. It allows passengers to book rides, view dynamic fare estimates across cab categories, track active trips in real time, view driver details, review recent trip history, and receive notification updates.
+CabGo is a local full-stack cab booking application. The Node.js backend serves
+the HTML, CSS, JavaScript, and JSON API from one local server; no deployment or
+hosting service is required.
 
----
+## What is included
+
+- Passenger registration, login, fare estimates, ride booking, cancellation,
+  notifications, active-trip tracking, and trip history.
+- Driver login, vehicle management, availability, ride acceptance/rejection,
+  trip start/completion, and earnings.
+- Admin management of drivers, passengers, vehicles, fares, and trips.
+- Super-admin management of administrators, settings, and audit logs.
 
 ## Prerequisites
-- **Node.js** (v18 or higher)
-- **MySQL** (v8 or higher)
 
----
+Install the following software on the computer running CabGo:
 
-## Setup & Installation
+- Node.js 18 or newer (Node.js 20 or 22 LTS is recommended)
+- npm (included with Node.js)
+- MySQL 8.0 or newer (MySQL 5.7 may work, but MySQL 8 is recommended)
+- Git
 
-1. **Clone the repository and install dependencies:**
-   ```bash
-   git clone <repository_url>
-   cd onlinecabbookingsystem
-   npm install
-   ```
+Check the installations:
 
-2. **Configure Environment Variables:**
-   Create a `.env` file in the project root with the following configuration:
-   ```env
-   DB_HOST=127.0.0.1
-   DB_PORT=3306
-   DB_USER=your_mysql_username
-   DB_PASSWORD=your_mysql_password
-   DB_NAME=cab_booking_system
-   ```
-
-3. **Initialize the Database:**
-   Execute `schema.sql` and `seed.sql` in MySQL to initialize tables and standard fare rules:
-   ```bash
-   mysql -u your_mysql_username -p < database/schema.sql
-   mysql -u your_mysql_username -p < database/seed.sql
-   ```
-
-4. **Start the Backend Server:**
-   ```bash
-   node backend/server.js
-   ```
-   The application and APIs will be running at:
-   **`http://localhost:3000`**
-
-   > [!IMPORTANT]
-   > **Do not use VS Code Live Server or static web servers.**
-   > The Node.js server at `http://localhost:3000` serves both the frontend pages and the backend API endpoints. Always open:
-   > **`http://localhost:3000/login.html`** or **`http://localhost:3000/index.html`**
-
-To create an administrator for local testing, provision one after configuring the
-database credentials:
 ```bash
-INITIAL_ADMIN_EMAIL=admin@example.com INITIAL_ADMIN_PASSWORD='Demo2026!' \
-INITIAL_ADMIN_NAME='CabGo Admin' npm run provision:admin
+node --version
+npm --version
+mysql --version
 ```
 
----
+## Installation
 
-## Passenger Portal Features (Member 1)
+Clone the repository and install the Node.js dependencies:
 
-- **Registration & Authentication:** Secure passenger registration and login with client-side validation, password toggles, and session handling.
-- **Cab Search & Dynamic Fare Estimation:** Search for rides between distinct pickup and drop points with real-time rate lookup across categories (`standard`, `sedan`, `suv`), including optional custom route distance (km) and travel duration (minutes).
-- **Interactive Booking Confirmation Modal:** Focus-trapped accessible dialog showing ride summary, estimated time, and fare breakdown before confirming.
-- **Duplicate Booking Prevention:** Prevents double submissions and blocks creating additional rides while an active booking is in progress.
-- **Live Active Booking Tracking:** Real-time status display (`REQUESTED`, `ACCEPTED`, `STARTED`), driver name, star rating, vehicle model, and registration number.
-- **Booking Cancellation Dialog:** In-page modal with booking details and one-click cancellation for unassigned requests.
-- **Notifications Panel:** Displays real-time alerts (e.g., driver rejections) with unread count badges and click-to-read functionality.
-- **Trip History & Account Stats:** Overview statistics (Total, Completed, Active) and historical trips with mobile-responsive card stacking for screens from 320px to desktop.
-- **Accessibility & Robust UX:** ARIA live regions (`aria-live="polite"`), visible loading spinners, inline error cards with functional Retry buttons, and strict prevention of XSS via safe DOM APIs.
+```bash
+git clone https://github.com/adnahjennifer/onlinecabbookingsystem.git
+cd onlinecabbookingsystem
+npm install
+```
 
----
+Create a local MySQL database and import the complete portable export. The
+following command asks for the MySQL administrator password:
 
-## Passenger API Endpoints Used
+```bash
+mysql -u root -p < database.sql
+```
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/register` | Creates a new passenger account |
-| `POST` | `/api/login` | Authenticates passenger and issues session cookie |
-| `GET` | `/api/me` | Validates session and retrieves current user details |
-| `POST` | `/api/logout` | Clears active user session |
-| `POST` | `/api/fare/estimate` | Calculates estimated fares per vehicle category |
-| `POST` | `/api/ride-requests` | Creates a new cab ride request |
-| `GET` | `/api/ride-requests/mine` | Retrieves active and completed bookings for the passenger |
-| `POST` | `/api/ride-requests/:request_id/cancel` | Cancels an unaccepted ride request |
-| `GET` | `/api/notifications` | Retrieves passenger notification alerts |
-| `PATCH` | `/api/notifications/:notification_id/read` | Marks a notification as read |
+The export creates the `cab_booking_system` database, all tables, foreign keys,
+indexes, default settings, and the three initial fare rules. It is safe to run
+again on the same local database; it does not delete existing records.
 
----
+If the MySQL `root` account cannot log in from the terminal, create a local
+application user first in the MySQL client:
 
-## Team Contributions
-- **Member 1 (Passenger Frontend):** Designed, built, and polished all passenger-facing pages (`index.html`, `login.html`, `register.html`, `passenger-dashboard.html`), styling (`style.css`), client-side authentication (`auth.js`), notification tracking, ride booking & cancellation workflows, and shared API integration (`api.js`, `passenger.js`).
+```sql
+CREATE USER 'cabgo_user'@'localhost' IDENTIFIED BY 'choose-a-local-password';
+GRANT ALL PRIVILEGES ON cab_booking_system.* TO 'cabgo_user'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+## Environment configuration
+
+Copy the example file and edit the database values:
+
+```bash
+cp .env.example .env
+```
+
+At minimum, set these values in `.env`:
+
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=cabgo_user
+DB_PASSWORD=choose-a-local-password
+DB_NAME=cab_booking_system
+PORT=3000
+```
+
+`.env` is ignored by Git. Never commit database passwords, API keys, or other
+local secrets. The optional routing and geocoding variables in
+`.env.example` can be left at their defaults.
+
+Verify the database credentials before starting the server:
+
+```bash
+npm run db:check
+```
+
+## Start CabGo
+
+The backend also serves the frontend, so only one terminal is required:
+
+```bash
+npm start
+```
+
+Open [http://localhost:3000/](http://localhost:3000/) in a browser. The
+application pages and API use the same origin; do not use VS Code Live Server
+or another static web server.
+
+To use another port, set `PORT` in `.env` and open the matching URL.
+
+## Create an admin account
+
+Passenger registration creates passenger accounts only. Create the first local
+administrator with values supplied in the command environment:
+
+```bash
+INITIAL_ADMIN_EMAIL=admin@example.com \
+INITIAL_ADMIN_PASSWORD='choose-a-password-8-chars-minimum' \
+INITIAL_ADMIN_NAME='CabGo Admin' \
+npm run provision:admin
+```
+
+Use the email and password you chose at the normal login page. This command
+does not print or store the password in the repository. A super-admin account
+must be created through the existing administrative workflow after an
+authorized account is available.
+
+## Access by role
+
+- Passenger: open `http://localhost:3000/register.html` to register, then use
+  `http://localhost:3000/login.html`.
+- Driver: use `http://localhost:3000/driver/login.html`. A driver profile and
+  vehicle must be approved by an admin before accepting rides.
+- Admin: log in through `http://localhost:3000/login.html` with the account
+  created by `npm run provision:admin`, then use the admin dashboard.
+- Super-admin: use the existing super-admin account or create one through the
+  authorized admin workflow; do not hardcode credentials in source files.
+
+## Tests and checks
+
+Run the automated validation tests:
+
+```bash
+npm test
+```
+
+Run the database connectivity check:
+
+```bash
+npm run db:check
+```
+
+With `npm start` running, verify the browser pages at the local URL and test
+registration/login, a fare estimate, passenger booking/cancellation, and the
+existing driver/admin workflows using local accounts. Driver rides require
+admin approval, so that workflow is intentionally multi-step.
+
+## Troubleshooting
+
+### `ECONNREFUSED` or `Can't connect to MySQL`
+
+Start the local MySQL service, confirm `mysql --version`, and check `DB_HOST`,
+`DB_PORT`, `DB_USER`, and `DB_PASSWORD` in `.env`. Then rerun:
+
+```bash
+npm run db:check
+```
+
+### `Unknown database 'cab_booking_system'` or missing tables
+
+Run the complete export from the repository root:
+
+```bash
+mysql -u root -p < database.sql
+```
+
+Do not import only a migration file into a fresh installation.
+
+### `EADDRINUSE: address already in use`
+
+Another process is using port 3000. Stop that process, or set a different
+`PORT` in `.env` and use the corresponding browser URL.
+
+### `npm install` fails while compiling `bcrypt`
+
+Install the current Node.js LTS release and the platform build tools required
+by your operating system, then run `npm install` again. Do not copy
+`node_modules` from another computer.
+
+### The browser shows a database error
+
+Confirm that `npm run db:check` succeeds, that the server was restarted after
+editing `.env`, and that the browser is using the same port printed by
+`npm start`.
+
+## Project layout
+
+- `backend/server.js` - HTTP server, static-file server, and API routes
+- `backend/db.js` - environment-based MySQL connection pool
+- `public/` - passenger, driver, admin, and super-admin frontend pages
+- `database.sql` - complete portable schema and seed export
+- `database/` - source schema, seed, and historical migrations
+- `test/` - automated Node.js tests
