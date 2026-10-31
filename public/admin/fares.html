@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fare Rules | CabGo Admin</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
+  <script src="../js/api.js" defer></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="admin" data-page="admin-fares">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Admin</span></a>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span class="user-chip">Administrator</span>
+      <a href="../login.html" class="top-link" id="adminLogoutBtn">Logout</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">ADMINISTRATION</p>
+      <a href="dashboard.html">Overview</a>
+      <a href="drivers.html">Manage Drivers</a>
+      <a href="passengers.html">Manage Passengers</a>
+      <a href="vehicles.html">Vehicles Fleet</a>
+      <a class="active" href="fares.html">Fare Rules</a>
+      <a href="trips.html">Trips Monitoring</a>
+    </aside>
+
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">PRICING & REVENUE</p>
+          <h1>Fare Calculation Rules</h1>
+          <p class="muted">Configure base fares, per-kilometre charges, and minute rates across vehicle tiers.</p>
+        </div>
+        <span class="mode-badge" id="dataModeBadge">Checking mode...</span>
+      </div>
+
+      <div id="faresPageMessage" class="message" style="margin-bottom: 20px;" hidden></div>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Active Category Rates</h2>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Vehicle Category</th>
+                <th>Base Fare (₹)</th>
+                <th>Distance Rate (₹/km)</th>
+                <th>Time Rate (₹/min)</th>
+                <th>Rule Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="fareRulesTableBody">
+              <tr><td colspan="6" class="loading-state"><div class="spinner"></div> Loading fare rules...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Edit Fare Rule Modal -->
+      <div class="modal-backdrop" id="editFareModal" hidden>
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h3>Update Pricing Parameters</h3>
+            <button class="modal-close-btn" id="closeEditFareModalBtn">&times;</button>
+          </div>
+          <form id="editFareForm">
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="fareVehicleType">Vehicle Tier</label>
+                <input type="text" id="fareVehicleType" readonly style="background: #f1f5f9; font-weight: bold;">
+              </div>
+              <div class="form-group">
+                <label for="fareBaseRate">Base Minimum Fare (₹)</label>
+                <input type="number" id="fareBaseRate" step="0.5" min="0" required>
+              </div>
+              <div class="form-group">
+                <label for="farePerKm">Per Kilometre Rate (₹/km)</label>
+                <input type="number" id="farePerKm" step="0.5" min="0" required>
+              </div>
+              <div class="form-group">
+                <label for="farePerMin">Per Minute Rate (₹/min)</label>
+                <input type="number" id="farePerMin" step="0.1" min="0" required>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="button button-quiet" id="cancelEditFareBtn">Cancel</button>
+              <button type="submit" class="button button-success">Save Fare Rule</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <footer>CabGo Administrator Control Center</footer>
+    </main>
+  </div>
+</body>
+</html>

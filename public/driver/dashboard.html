@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Driver Dashboard | CabGo</title>
   <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
   <script src="../js/api.js"></script>
   <script src="../js/member3.js" defer></script>
 </head>
@@ -23,7 +24,7 @@
       <a href="ride-requests.html">Ride requests</a>
       <a href="vehicles.html">My vehicles</a>
       <a href="earnings.html">Earnings</a>
-      <p class="nav-note">CabGo Driver Platform<br>Member 3 · Day 4</p>
+      <p class="nav-note">CabGo Driver Platform</p>
     </aside>
     <main class="main">
       <div class="page-heading">
@@ -109,6 +110,7 @@
             <a href="vehicles.html">Manage all vehicles →</a>
           </div>
           <div id="overviewVehicleContent">
+            <img id="ovVehicleImage" class="vehicle-photo vehicle-photo-dashboard" alt="" hidden>
             <!-- Dynamically populated by member3.js -->
             <dl class="details">
               <div><dt>Registration</dt><dd id="ovVehicleReg">-</dd></div>
@@ -149,12 +151,12 @@
       <div class="modal-body">
         <p>Confirm completion of trip <strong id="completeModalTripId">#--</strong>.</p>
         <p class="muted" id="completeModalRoute">Route: Adyar → T. Nagar</p>
-        <label for="completeFinalFareInput" style="display:block;font-size:12px;font-weight:700;margin-top:14px;">Final Recorded Fare (₹):</label>
+        <label for="completeFinalFareInput" style="display:block;font-size:12px;font-weight:700;margin-top:14px;">Server-calculated Fare (₹):</label>
         <div class="fare-input-wrap">
           <span>₹</span>
-          <input type="number" id="completeFinalFareInput" step="0.5" min="10" max="10000" required>
+          <input type="number" id="completeFinalFareInput" step="0.5" readonly aria-readonly="true">
         </div>
-        <p class="muted" style="font-size:11px;margin-top:6px;">Pre-filled with the estimated fare. Adjust if there were route changes or waiting charges.</p>
+        <p class="muted" style="font-size:11px;margin-top:6px;">The final fare is calculated from the booking fare stored by the server.</p>
         <div id="completeModalError" class="message error" hidden></div>
       </div>
       <div class="modal-footer">

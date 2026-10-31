@@ -7,13 +7,15 @@
 "use strict";
 
 const API_CONFIG = {
-    USE_MOCK: false,
     BASE_URL: "",
     ENDPOINTS: {
         register: "/api/register",
         login: "/api/login",
         logout: "/api/logout",
         me: "/api/me",
+        locations: "/api/locations",
+        geocode: "/api/geocode",
+        route: "/api/route",
         fareEstimate: "/api/fare/estimate",
         rideRequests: "/api/ride-requests",
         myRideRequests: "/api/ride-requests/mine",
@@ -25,7 +27,7 @@ const API_CONFIG = {
         searchRides: "/api/rides/search",
         bookings: "/api/ride-requests",
         cancelBooking: "/api/ride-requests/:request_id/cancel",
-        // Driver endpoints (Member 3 - Day 4)
+        // Driver endpoints
         driverRequests: "/api/driver/requests",
         driverAcceptRequest: "/api/driver/requests/:request_id/accept",
         driverRejectRequest: "/api/driver/requests/:request_id/reject",
@@ -34,7 +36,27 @@ const API_CONFIG = {
         driverVehicles: "/api/driver/vehicles",
         driverVehicleItem: "/api/driver/vehicles/:vehicle_id",
         driverEarnings: "/api/driver/earnings",
-        driverAvailability: "/api/driver/availability"
+        driverAvailability: "/api/driver/availability",
+        // Admin endpoints
+        adminStats: "/api/admin/stats",
+        adminDrivers: "/api/admin/drivers",
+        adminDriverApprove: "/api/admin/drivers/:driver_id/approve",
+        adminDriverReject: "/api/admin/drivers/:driver_id/reject",
+        adminDriverBlock: "/api/admin/drivers/:driver_id/block",
+        adminPassengers: "/api/admin/passengers",
+        adminPassengerToggle: "/api/admin/passengers/:user_id/toggle-block",
+        adminVehicles: "/api/admin/vehicles",
+        adminVehicleApprove: "/api/admin/vehicles/:vehicle_id/approve",
+        adminVehicleReject: "/api/admin/vehicles/:vehicle_id/reject",
+        adminFareRules: "/api/admin/fare-rules",
+        adminFareRuleItem: "/api/admin/fare-rules/:rule_id",
+        adminTrips: "/api/admin/trips",
+        // Super admin endpoints
+        superadminStats: "/api/superadmin/stats",
+        superadminAdmins: "/api/superadmin/admins",
+        superadminAdminToggle: "/api/superadmin/admins/:user_id/toggle",
+        superadminLogs: "/api/superadmin/logs",
+        superadminSettings: "/api/superadmin/settings"
     },
     /**
      * Resolves the cancel booking endpoint path for a given request ID.
@@ -63,6 +85,30 @@ const API_CONFIG = {
     },
     getDriverVehicleItemUrl(vehicleId) {
         return this.ENDPOINTS.driverVehicleItem.replace(":vehicle_id", encodeURIComponent(vehicleId));
+    },
+    getAdminDriverApproveUrl(driverId) {
+        return this.ENDPOINTS.adminDriverApprove.replace(":driver_id", encodeURIComponent(driverId));
+    },
+    getAdminDriverRejectUrl(driverId) {
+        return this.ENDPOINTS.adminDriverReject.replace(":driver_id", encodeURIComponent(driverId));
+    },
+    getAdminDriverBlockUrl(driverId) {
+        return this.ENDPOINTS.adminDriverBlock.replace(":driver_id", encodeURIComponent(driverId));
+    },
+    getAdminPassengerToggleUrl(userId) {
+        return this.ENDPOINTS.adminPassengerToggle.replace(":user_id", encodeURIComponent(userId));
+    },
+    getAdminVehicleApproveUrl(vehicleId) {
+        return this.ENDPOINTS.adminVehicleApprove.replace(":vehicle_id", encodeURIComponent(vehicleId));
+    },
+    getAdminVehicleRejectUrl(vehicleId) {
+        return this.ENDPOINTS.adminVehicleReject.replace(":vehicle_id", encodeURIComponent(vehicleId));
+    },
+    getAdminFareRuleItemUrl(ruleId) {
+        return this.ENDPOINTS.adminFareRuleItem.replace(":rule_id", encodeURIComponent(ruleId));
+    },
+    getSuperadminAdminToggleUrl(userId) {
+        return this.ENDPOINTS.superadminAdminToggle.replace(":user_id", encodeURIComponent(userId));
     }
 };
 
@@ -304,7 +350,10 @@ async function apiRequest(path, method = "GET", body = null) {
     // Auto-redirect on 401 Unauthorized (unless it's an intentional login/register check)
     if (result && result.status === 401 && !path.includes("/login") && !path.includes("/register")) {
         clearSession();
-        window.location.replace("login.html?expired=1");
+        const loginPath = window.location.pathname.split("/").filter(Boolean).length > 1
+            ? "../login.html?expired=1"
+            : "login.html?expired=1";
+        window.location.replace(loginPath);
     }
 
     return result;

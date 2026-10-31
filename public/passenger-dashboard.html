@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CabGo | Passenger Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="js/theme.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
@@ -49,50 +52,22 @@
 
         <form id="searchForm" novalidate>
             <label for="pickup">Pickup Location</label>
-            <input
-                type="text"
-                id="pickup"
-                name="pickup"
-                placeholder="Enter pickup location"
-                required
-                autocomplete="off"
-            >
+            <select id="pickup" name="pickup" required>
+                <option value="">Loading locations...</option>
+            </select>
 
             <label for="destination">Destination</label>
-            <input
-                type="text"
-                id="destination"
-                name="destination"
-                placeholder="Enter destination"
-                required
-                autocomplete="off"
-            >
+            <select id="destination" name="destination" required>
+                <option value="">Loading locations...</option>
+            </select>
 
-            <div class="form-row-2">
-                <div>
-                    <label for="distanceKm">Approx. distance (km) <small>(optional)</small></label>
-                    <input
-                        type="number"
-                        id="distanceKm"
-                        name="distanceKm"
-                        placeholder="e.g. 10 (default: 10)"
-                        min="1"
-                        max="200"
-                        step="any"
-                    >
+            <div class="route-layout">
+                <div class="route-summary" id="routeSummary" hidden>
+                    <strong>Road route calculated</strong>
+                    <span id="routeDistance">—</span>
+                    <span id="routeDuration">—</span>
                 </div>
-                <div>
-                    <label for="durationMin">Approx. time (minutes) <small>(optional)</small></label>
-                    <input
-                        type="number"
-                        id="durationMin"
-                        name="durationMin"
-                        placeholder="e.g. 20 (default: 20)"
-                        min="1"
-                        max="600"
-                        step="1"
-                    >
-                </div>
+                <div id="bookingMap" class="booking-map" aria-label="Selected route map"></div>
             </div>
 
             <button class="button" type="submit" id="searchSubmitBtn">Search Cabs</button>

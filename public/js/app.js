@@ -1,5 +1,5 @@
 // Online Cab Booking System - Common Application Logic
-// Passenger portal logic for Day 3 is maintained in public/js/passenger.js.
+// Passenger portal logic is maintained in public/js/passenger.js.
 
 "use strict";
 

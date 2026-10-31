@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manage Administrators | CabGo Super Admin</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
+  <script src="../js/api.js" defer></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="superadmin" data-page="superadmin-admins">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Super Admin</span></a>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span class="user-chip">System Owner · SA-01</span>
+      <a href="../login.html" class="top-link" id="superLogoutBtn">Logout</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">SYSTEM GOVERNANCE</p>
+      <a href="dashboard.html">Overview</a>
+      <a class="active" href="admins.html">Administrators</a>
+      <a href="permissions.html">Permissions</a>
+      <a href="settings.html">System Settings</a>
+      <a href="logs.html">System Logs</a>
+    </aside>
+
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">ACCESS CONTROL</p>
+          <h1>Administrator Accounts</h1>
+          <p class="muted">Provision administrative staff accounts, assign functional departments, and revoke access.</p>
+        </div>
+        <button class="button button-success" id="openAddAdminModalBtn">+ Add Administrator</button>
+      </div>
+
+      <div id="adminsPageMessage" class="message" style="margin-bottom: 20px;" hidden></div>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Active Administrator Accounts</h2>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Administrator Name</th>
+                <th>Email Address</th>
+                <th>Department</th>
+                <th>Status</th>
+                <th>Access Action</th>
+              </tr>
+            </thead>
+            <tbody id="adminsTableBody">
+              <tr><td colspan="6" class="loading-state"><div class="spinner"></div> Loading administrator accounts...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Add Administrator Modal -->
+      <div class="modal-backdrop" id="addAdminModal" hidden>
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h3>Add New Administrator</h3>
+            <button class="modal-close-btn" id="closeAddAdminModalBtn">&times;</button>
+          </div>
+          <form id="addAdminForm">
+            <div class="modal-body">
+              <div class="form-group">
+                <label for="adminFullName">Full Name</label>
+                <input type="text" id="adminFullName" placeholder="e.g. Rahul Sharma" required>
+              </div>
+              <div class="form-group">
+                <label for="adminEmail">Email Address</label>
+                <input type="email" id="adminEmail" placeholder="admin@example.com" required>
+              </div>
+              <div class="form-group">
+                <label for="adminDepartment">Functional Department</label>
+                <select id="adminDepartment" required>
+                  <option value="Operations">Operations</option>
+                  <option value="Driver Management">Driver Management</option>
+                  <option value="Reports & Auditing">Reports & Auditing</option>
+                  <option value="Customer Support">Customer Support</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="adminPassword">Temporary Password</label>
+                <input type="password" id="adminPassword" placeholder="Minimum 8 characters" required minlength="8" maxlength="72">
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="button button-quiet" id="cancelAddAdminBtn">Cancel</button>
+              <button type="submit" class="button button-success">Create Account</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <footer>CabGo Super Administrator Governance</footer>
+    </main>
+  </div>
+</body>
+</html>

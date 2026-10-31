@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Manage Drivers | CabGo Admin</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
+  <script src="../js/api.js" defer></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="admin" data-page="admin-drivers">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Admin</span></a>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span class="user-chip">Administrator</span>
+      <a href="../login.html" class="top-link" id="adminLogoutBtn">Logout</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">ADMINISTRATION</p>
+      <a href="dashboard.html">Overview</a>
+      <a class="active" href="drivers.html">Manage Drivers</a>
+      <a href="passengers.html">Manage Passengers</a>
+      <a href="vehicles.html">Vehicles Fleet</a>
+      <a href="fares.html">Fare Rules</a>
+      <a href="trips.html">Trips Monitoring</a>
+    </aside>
+
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">DRIVER MANAGEMENT</p>
+          <h1>Registered Drivers</h1>
+          <p class="muted">Review driver accounts, license documents, availability, and verification status.</p>
+        </div>
+        <span class="mode-badge" id="dataModeBadge">Checking mode...</span>
+      </div>
+
+      <div id="driversPageMessage" class="message" style="margin-bottom: 20px;" hidden></div>
+
+      <section class="panel">
+        <div class="panel-heading" style="flex-wrap: wrap; gap: 15px;">
+          <h2>Driver Directory</h2>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="search" id="driverSearchInput" placeholder="Search by name, email or license..." style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; width: 250px;">
+            <select id="driverStatusFilter" style="padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px;">
+              <option value="all">All Verification Statuses</option>
+              <option value="pending">Pending Verification</option>
+              <option value="approved">Verified / Approved</option>
+              <option value="rejected">Rejected / Blocked</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Driver ID</th>
+                <th>Driver Name & Email</th>
+                <th>License & Expiry</th>
+                <th>Verification</th>
+                <th>Availability</th>
+                <th>Rating</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="driversTableBody">
+              <tr><td colspan="7" class="loading-state"><div class="spinner"></div> Loading drivers roster...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer>CabGo Administrator Control Center</footer>
+    </main>
+  </div>
+</body>
+</html>

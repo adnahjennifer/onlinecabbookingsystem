@@ -4,16 +4,38 @@
     box-sizing: border-box;
 }
 
+:root {
+    color-scheme: light;
+    --page-bg: #f4f7fb;
+    --surface: #ffffff;
+    --surface-muted: #eef3f8;
+    --text: #1f2937;
+    --muted: #52606d;
+    --border: #d9e2ec;
+    --header-bg: #102a43;
+}
+
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --page-bg: #111827;
+    --surface: #1f2937;
+    --surface-muted: #273548;
+    --text: #edf2f7;
+    --muted: #bdc9d8;
+    --border: #405166;
+    --header-bg: #0b1d33;
+}
+
 body {
     margin: 0;
     font-family: Arial, Helvetica, sans-serif;
-    background: #f4f7fb;
-    color: #1f2937;
+    background: var(--page-bg);
+    color: var(--text);
     line-height: 1.6;
 }
 
 header {
-    background: #102a43;
+    background: var(--header-bg);
     color: white;
     padding: 18px 7%;
 }
@@ -48,6 +70,23 @@ nav a:hover {
     background: rgba(255, 255, 255, 0.08);
 }
 
+.theme-toggle {
+    min-height: 36px;
+    border: 1px solid rgba(255,255,255,.35);
+    border-radius: 999px;
+    padding: 6px 12px;
+    background: transparent;
+    color: white;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.theme-toggle:hover {
+    background: rgba(255,255,255,.12);
+}
+
 .container {
     width: 86%;
     max-width: 1100px;
@@ -55,7 +94,7 @@ nav a:hover {
 }
 
 .hero {
-    background: white;
+    background: var(--surface);
     padding: 45px 30px;
     border-radius: 12px;
     text-align: center;
@@ -63,12 +102,12 @@ nav a:hover {
 }
 
 .hero h2 {
-    color: #102a43;
+    color: var(--text);
     font-size: 34px;
 }
 
 .hero p {
-    color: #52606d;
+    color: var(--muted);
     font-size: 17px;
 }
 
@@ -329,6 +368,36 @@ footer {
     color: #64748b;
 }
 
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .form-card,
+:root[data-theme="dark"] .hero,
+:root[data-theme="dark"] .auth-card {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text);
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+    background: var(--surface-muted);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+:root[data-theme="dark"] .hero h2,
+:root[data-theme="dark"] h1,
+:root[data-theme="dark"] h2,
+:root[data-theme="dark"] h3 {
+    color: var(--text);
+}
+
+:root[data-theme="dark"] .hero p,
+:root[data-theme="dark"] .muted,
+:root[data-theme="dark"] footer {
+    color: var(--muted);
+}
+
 @media (max-width: 700px) {
     .container {
         width: 92%;
@@ -359,7 +428,7 @@ footer {
 }
 
 /* ==========================================================================
-   Day 3: Member 1 Passenger Portal Additions
+   Passenger portal additions
    ========================================================================== */
 
 /* Ride Search Results & Ride Cards */
@@ -926,7 +995,7 @@ footer {
 }
 
 /* ==========================================================================
-   Form Row & Notifications (Day 6 - Tasks 7 & 8)
+   Form rows and notifications
    ========================================================================== */
 
 .form-row-2 {
@@ -1030,3 +1099,448 @@ footer {
     }
 }
 
+/* CabGo editorial theme */
+:root {
+    --page-bg: #f5efe5;
+    --surface: #fffaf3;
+    --surface-muted: #e6d9c9;
+    --text: #171310;
+    --muted: #674735;
+    --border: #cdb9a5;
+    --header-bg: #171310;
+    --accent: #674735;
+    --accent-strong: #33231c;
+}
+
+:root[data-theme="dark"] {
+    --page-bg: #171310;
+    --surface: #33231c;
+    --surface-muted: #674735;
+    --text: #f5efe5;
+    --muted: #e6d9c9;
+    --border: #8d6a53;
+    --header-bg: #171310;
+    --accent: #e6d9c9;
+    --accent-strong: #f5efe5;
+}
+
+html,
+body {
+    background: var(--page-bg);
+    color: var(--text);
+}
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 14px clamp(20px, 6vw, 88px);
+    border-bottom: 1px solid rgba(245, 239, 229, .18);
+}
+
+header h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 30px;
+    letter-spacing: -.04em;
+}
+
+header nav {
+    margin-top: 0;
+}
+
+.container {
+    width: min(1120px, calc(100% - 40px));
+    margin: 56px auto;
+}
+
+.hero {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(48px, 9vw, 110px) clamp(26px, 8vw, 110px);
+    text-align: left;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--surface);
+    box-shadow: none;
+    max-width: 100%;
+}
+
+.hero::after {
+    content: "";
+    position: absolute;
+    width: 180px;
+    height: 180px;
+    right: -60px;
+    bottom: -70px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+}
+
+.eyebrow {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .16em;
+}
+
+.hero h2 {
+    max-width: 700px;
+    margin: 16px 0;
+    color: var(--text);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: clamp(44px, 8vw, 92px);
+    font-weight: 400;
+    letter-spacing: -.055em;
+    line-height: .98;
+}
+
+.hero p:not(.eyebrow) {
+    max-width: 510px;
+    color: var(--muted);
+}
+
+.button {
+    background: var(--accent);
+    border-radius: 2px;
+    color: #fffaf3;
+    box-shadow: none;
+}
+
+.button:hover {
+    background: var(--accent-strong);
+}
+
+.button.secondary,
+.button.secondary:hover {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.card,
+.form-card,
+.stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    box-shadow: none;
+}
+
+.card h2,
+.card h3,
+.form-card h2 {
+    color: var(--text);
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 400;
+}
+
+.card p,
+.form-card p,
+footer {
+    color: var(--muted);
+}
+
+input,
+select,
+textarea {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+    border-radius: 2px;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+th {
+    background: var(--surface-muted);
+    color: var(--muted);
+}
+
+td {
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.editorial-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 700px) {
+    header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .container {
+        width: min(100% - 24px, 1120px);
+        margin: 28px auto;
+    }
+
+    .editorial-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+
+    .hero-photo-card {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+        gap: 28px;
+        align-items: center;
+        margin-top: 24px;
+    }
+
+    .hero-photo-card img {
+        width: 100%;
+        max-width: 100%;
+        height: 260px;
+        object-fit: cover;
+        border-radius: 2px;
+    }
+
+    .demo-credentials {
+        margin-top: 24px;
+        padding: 18px;
+        border: 1px solid var(--border);
+        background: var(--surface-muted);
+    }
+
+    .demo-credentials h3 {
+        margin-top: 0;
+    }
+
+    .demo-credentials p,
+    .demo-credentials li {
+        font-size: 13px;
+    }
+
+    .hero-photo-card h3 {
+        font-size: clamp(28px, 4vw, 46px);
+        line-height: 1;
+    }
+
+    .vehicle-photo {
+        display: block;
+        width: 100%;
+        height: 150px;
+        object-fit: cover;
+        border-radius: 2px;
+        background: var(--surface-muted);
+    }
+
+    .vehicle-photo-dashboard {
+        max-width: 260px;
+        height: 145px;
+        margin-bottom: 16px;
+    }
+
+    @media (max-width: 700px) {
+        .hero-photo-card {
+            grid-template-columns: 1fr;
+        }
+
+        .hero-photo-card img {
+            height: 210px;
+        }
+    }
+}
+/* Map and location search */
+.route-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(280px, 1.2fr);
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.booking-map {
+    min-height: 260px;
+    border-radius: 0.75rem;
+    overflow: hidden;
+}
+
+.location-suggestions {
+    position: relative;
+    z-index: 20;
+    display: grid;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #d8cbbd);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.location-suggestion {
+    padding: 0.65rem 0.75rem;
+    border: 0;
+    border-bottom: 1px solid var(--border, #d8cbbd);
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.location-suggestion:hover,
+.location-suggestion:focus-visible {
+    background: var(--surface-muted, #f5efe5);
+}
+
+.route-summary {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 1rem;
+    border-radius: 0.75rem;
+    background: var(--surface-muted, #f5efe5);
+}
+
+@media (max-width: 720px) {
+    .route-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-map {
+        min-height: 230px;
+    }
+}
+
+/* Final responsive polish */
+html,
+body {
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.hero,
+.card,
+.hero-photo-card,
+.route-layout,
+.ride-cards-grid {
+    min-width: 0;
+}
+
+.hero {
+    display: grid;
+    justify-items: start;
+    gap: 12px;
+}
+
+.hero h2,
+.hero p {
+    max-width: 680px;
+    margin-block: 0;
+}
+
+.hero .button {
+    margin: 4px 8px 0 0;
+}
+
+.hero-photo-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
+    gap: clamp(20px, 4vw, 40px);
+    align-items: center;
+    margin-top: 24px;
+}
+
+.hero-photo-card img {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: clamp(210px, 28vw, 320px);
+    object-fit: cover;
+    border-radius: 2px;
+}
+
+.card {
+    overflow: hidden;
+}
+
+.route-layout {
+    align-items: stretch;
+}
+
+.booking-map {
+    width: 100%;
+    min-width: 0;
+}
+
+.table-wrapper,
+.table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    min-width: 620px;
+}
+
+button,
+.button,
+input,
+select,
+textarea {
+    min-height: 44px;
+}
+
+@media (max-width: 700px) {
+    .hero {
+        padding: 34px 22px;
+    }
+
+    .hero h2 {
+        font-size: clamp(28px, 9vw, 36px);
+    }
+
+    .hero .button {
+        width: 100%;
+        margin: 4px 0 0;
+    }
+
+    .hero-photo-card {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-photo-card img {
+        height: 210px;
+    }
+
+    .route-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .booking-map {
+        min-height: 230px;
+    }
+}
+
+@media (max-width: 380px) {
+    .container {
+        width: calc(100% - 20px);
+    }
+
+    .card {
+        padding: 16px;
+    }
+}

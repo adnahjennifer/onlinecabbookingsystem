@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Permissions Matrix | CabGo Super Admin</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
+  <script src="../js/api.js" defer></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="superadmin" data-page="superadmin-permissions">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Super Admin</span></a>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span class="user-chip">System Owner · SA-01</span>
+      <a href="../login.html" class="top-link" id="superLogoutBtn">Logout</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">SYSTEM GOVERNANCE</p>
+      <a href="dashboard.html">Overview</a>
+      <a href="admins.html">Administrators</a>
+      <a class="active" href="permissions.html">Permissions</a>
+      <a href="settings.html">System Settings</a>
+      <a href="logs.html">System Logs</a>
+    </aside>
+
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">SECURITY ARCHITECTURE</p>
+          <h1>Role & Permission Matrix</h1>
+          <p class="muted">Defines role boundaries and access levels enforced at client session and backend API layers.</p>
+        </div>
+        <span class="pill pill-success">RBAC Enforced</span>
+      </div>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Platform Role Access Control Matrix</h2>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Feature / Capability Module</th>
+                <th>Passenger</th>
+                <th>Driver</th>
+                <th>Admin</th>
+                <th>Super Admin</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Search Rides & Estimate Fares</strong></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+              </tr>
+              <tr>
+                <td><strong>Book / Cancel Cab Rides</strong></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+              </tr>
+              <tr>
+                <td><strong>Accept / Reject Ride Requests</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+              </tr>
+              <tr>
+                <td><strong>Start & Complete Trip Lifecycle</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+              </tr>
+              <tr>
+                <td><strong>Driver Fleet & Vehicle Registration</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill pill-success">Review</span></td>
+                <td><span class="pill pill-success">Full</span></td>
+              </tr>
+              <tr>
+                <td><strong>Approve / Reject Driver & Vehicles</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+              </tr>
+              <tr>
+                <td><strong>Edit Fare Calculation Rates</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+                <td><span class="pill pill-success">Yes</span></td>
+              </tr>
+              <tr>
+                <td><strong>Manage Administrator Accounts</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-purple">Super Admin Only</span></td>
+              </tr>
+              <tr>
+                <td><strong>System Settings & Core Policies</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-purple">Super Admin Only</span></td>
+              </tr>
+              <tr>
+                <td><strong>View System Audit Logs</strong></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill">No</span></td>
+                <td><span class="pill pill-purple">Super Admin Only</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer>CabGo Super Administrator Governance</footer>
+    </main>
+  </div>
+</body>
+</html>

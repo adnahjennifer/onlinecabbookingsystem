@@ -1,6 +1,6 @@
 /**
  * CabGo - Online Cab Booking System
- * Passenger Dashboard Controller (Day 5 - Member 1 Polish)
+ * Passenger dashboard controller
  *
  * Implements:
  * 1. Visual loading states on every Fetch call (spinner and text, button disabling with restore in finally).
@@ -17,12 +17,6 @@
 "use strict";
 
 (function () {
-    // Temporary route distance and duration estimates until real route mapping is integrated.
-    // These placeholder values match backend/server.js so the fare shown to the passenger
-    // equals the fare stored in the database.
-    const DEFAULT_ESTIMATED_DISTANCE_KM = 10;
-    const DEFAULT_ESTIMATED_DURATION_MINUTES = 20;
-
     // Friendly status descriptions for passenger UI
     const STATUS_DESCRIPTIONS = {
         requested: "Looking for a driver...",
@@ -94,6 +88,14 @@
 
     // Currently selected ride for confirmation modal
     let pendingRide = null;
+    let selectedPickup = null;
+    let selectedDestination = null;
+    const locationCoordinateCache = new Map();
+    let selectedRoute = null;
+    let bookingMap = null;
+    let routeLayer = null;
+    let pickupMarker = null;
+    let destinationMarker = null;
 
     // Booking targeted for cancellation
     let pendingCancelBookingId = null;
@@ -287,6 +289,88 @@
             return;
         }
 
+        const mapElement = document.getElementById("bookingMap");
+        if (mapElement && typeof L !== "undefined") {
+            bookingMap = L.map(mapElement).setView([20.5937, 78.9629], 5);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(bookingMap);
+        }
+
+        async function resolveLocation(location) {
+            if (locationCoordinateCache.has(location)) {
+                return locationCoordinateCache.get(location);
+            }
+            const response = await apiRequest(
+                `${API_CONFIG.ENDPOINTS.geocode || "/api/geocode"}?q=${encodeURIComponent(`${location}, Chennai, India`)}`,
+                "GET"
+            );
+            const resolved = response.ok && response.data?.locations?.[0]
+                ? response.data.locations[0]
+                : null;
+            if (resolved) {
+                locationCoordinateCache.set(location, resolved);
+            }
+            return resolved;
+        }
+
+        async function loadLocations() {
+            const response = await apiRequest(API_CONFIG.ENDPOINTS.locations || "/api/locations", "GET");
+            if (!response.ok || !Array.isArray(response.data?.locations) || response.data.locations.length === 0) {
+                [pickupInput, destinationInput].forEach(input => {
+                    if (input) input.innerHTML = '<option value="">Locations unavailable</option>';
+                });
+                showMessage(searchMessage, getErrorMessage(response.data, "Booking locations are temporarily unavailable."), "error");
+                return;
+            }
+            [pickupInput, destinationInput].forEach(input => {
+                if (!input) return;
+                input.textContent = "";
+                const placeholder = document.createElement("option");
+                placeholder.value = "";
+                placeholder.textContent = "Select a location";
+                input.appendChild(placeholder);
+                response.data.locations.forEach(location => {
+                    const option = document.createElement("option");
+                    option.value = location;
+                    option.textContent = location;
+                    input.appendChild(option);
+                });
+            });
+        }
+
+        async function handleLocationChange() {
+            selectedRoute = null;
+            const pickup = pickupInput?.value || "";
+            const destination = destinationInput?.value || "";
+            if (pickup && destination && pickup.toLowerCase() === destination.toLowerCase()) {
+                showMessage(searchMessage, "Pickup and destination locations must be different.", "error");
+                selectedDestination = null;
+                destinationInput.value = "";
+                return;
+            }
+            Array.from(destinationInput?.options || []).forEach(option => {
+                option.disabled = Boolean(pickup && option.value.toLowerCase() === pickup.toLowerCase());
+            });
+            Array.from(pickupInput?.options || []).forEach(option => {
+                option.disabled = Boolean(destination && option.value.toLowerCase() === destination.toLowerCase());
+            });
+            selectedPickup = pickup ? await resolveLocation(pickup) : null;
+            selectedDestination = destination ? await resolveLocation(destination) : null;
+            if ((pickup && !selectedPickup) || (destination && !selectedDestination)) {
+                showMessage(searchMessage, "Could not resolve the selected location. Please try again.", "error");
+                return;
+            }
+            if (selectedPickup && selectedDestination) {
+                searchForm.dispatchEvent(new Event("submit", { cancelable: true }));
+            }
+        }
+
+        pickupInput?.addEventListener("change", handleLocationChange);
+        destinationInput?.addEventListener("change", handleLocationChange);
+        loadLocations();
+
         searchForm.addEventListener("submit", async function (event) {
             event.preventDefault();
 
@@ -323,32 +407,38 @@
                 return;
             }
 
-            // Optional distance and duration inputs (Task 8)
-            const distInput = document.getElementById("distanceKm");
-            const durInput = document.getElementById("durationMin");
-
-            let estimatedDistanceKm = DEFAULT_ESTIMATED_DISTANCE_KM;
-            let estimatedDurationMinutes = DEFAULT_ESTIMATED_DURATION_MINUTES;
-
-            if (distInput && distInput.value.trim() !== "") {
-                const parsedDist = parseFloat(distInput.value.trim());
-                if (isNaN(parsedDist) || parsedDist < 1 || parsedDist > 200) {
-                    showMessage(searchMessage, "Distance must be a number between 1 and 200 km.", "error");
-                    distInput.focus();
-                    return;
-                }
-                estimatedDistanceKm = Number(parsedDist.toFixed(1));
+            if (!selectedPickup || !selectedDestination) {
+                showMessage(searchMessage, "Select both locations from the dropdowns.", "error");
+                return;
             }
-
-            if (durInput && durInput.value.trim() !== "") {
-                const parsedDur = parseInt(durInput.value.trim(), 10);
-                if (isNaN(parsedDur) || parsedDur < 1 || parsedDur > 600) {
-                    showMessage(searchMessage, "Estimated time must be between 1 and 600 minutes.", "error");
-                    durInput.focus();
-                    return;
-                }
-                estimatedDurationMinutes = parsedDur;
+            const routeResponse = await apiRequest(API_CONFIG.ENDPOINTS.route || "/api/route", "POST", {
+                pickup_lat: selectedPickup.lat,
+                pickup_lon: selectedPickup.lon,
+                drop_lat: selectedDestination.lat,
+                drop_lon: selectedDestination.lon
+            });
+            if (!routeResponse.ok || !routeResponse.data) {
+                showMessage(searchMessage, getErrorMessage(routeResponse.data, "Unable to calculate a driving route."), "error");
+                return;
             }
+            selectedRoute = routeResponse.data;
+            const estimatedDistanceKm = selectedRoute.distance_km;
+            const estimatedDurationMinutes = selectedRoute.duration_minutes;
+            if (bookingMap && selectedRoute.geometry) {
+                if (routeLayer) bookingMap.removeLayer(routeLayer);
+                if (pickupMarker) bookingMap.removeLayer(pickupMarker);
+                if (destinationMarker) bookingMap.removeLayer(destinationMarker);
+                routeLayer = L.geoJSON(selectedRoute.geometry).addTo(bookingMap);
+                pickupMarker = L.marker([selectedPickup.lat, selectedPickup.lon]).addTo(bookingMap).bindPopup("Pickup");
+                destinationMarker = L.marker([selectedDestination.lat, selectedDestination.lon]).addTo(bookingMap).bindPopup("Destination");
+                bookingMap.fitBounds(routeLayer.getBounds(), { padding: [20, 20] });
+            }
+            const routeSummary = document.getElementById("routeSummary");
+            if (routeSummary) routeSummary.hidden = false;
+            const distanceSummary = document.getElementById("routeDistance");
+            const durationSummary = document.getElementById("routeDuration");
+            if (distanceSummary) distanceSummary.textContent = `${estimatedDistanceKm} km`;
+            if (durationSummary) durationSummary.textContent = `${estimatedDurationMinutes} mins`;
 
             // Show visible loading states: inside the button AND in the results container
             setButtonLoading(searchBtn, true, "Calculating Fares...");
@@ -368,7 +458,11 @@
                         {
                             vehicle_type: type,
                             distance_km: estimatedDistanceKm,
-                            duration_minutes: estimatedDurationMinutes
+                            duration_minutes: estimatedDurationMinutes,
+                            pickup_lat: selectedPickup.lat,
+                            pickup_lon: selectedPickup.lon,
+                            drop_lat: selectedDestination.lat,
+                            drop_lon: selectedDestination.lon
                         }
                     )
                 );
@@ -384,8 +478,8 @@
                         successfulRides.push({
                             vehicle_type: res.data.vehicle_type || vehicleTypes[index],
                             estimated_fare: Number(res.data.estimated_fare),
-                            estimated_distance_km: res.data.distance_km || DEFAULT_ESTIMATED_DISTANCE_KM,
-                            estimated_minutes: res.data.duration_minutes || DEFAULT_ESTIMATED_DURATION_MINUTES
+                            estimated_distance_km: res.data.distance_km,
+                            estimated_minutes: res.data.duration_minutes
                         });
                     } else {
                         failedCount++;
@@ -471,6 +565,12 @@
             const card = document.createElement("article");
             card.className = "ride-card";
 
+            const vehicleImage = document.createElement("img");
+            vehicleImage.className = "vehicle-photo";
+            vehicleImage.src = `assets/vehicles/${ride.vehicle_type || "standard"}.jpg`;
+            vehicleImage.alt = `${ride.vehicle_type || "standard"} cab`;
+            vehicleImage.loading = "lazy";
+
             // Header: Vehicle type & badge
             const header = document.createElement("div");
             header.className = "ride-card-header";
@@ -529,12 +629,17 @@
                     vehicle_type: ride.vehicle_type || "standard",
                     estimated_fare: ride.estimated_fare,
                     estimated_distance_km: ride.estimated_distance_km,
-                    estimated_minutes: ride.estimated_minutes
+                    estimated_minutes: ride.estimated_minutes,
+                    pickup_lat: selectedPickup.lat,
+                    pickup_lon: selectedPickup.lon,
+                    drop_lat: selectedDestination.lat,
+                    drop_lon: selectedDestination.lon
                 });
             });
 
             // Assemble card
             card.appendChild(header);
+            card.appendChild(vehicleImage);
             card.appendChild(fareEl);
             card.appendChild(metaEl);
             card.appendChild(bookBtn);
@@ -597,14 +702,10 @@
             vehicleTypeEl.textContent = rideDetails.vehicle_type;
         }
         if (distanceEl) {
-            distanceEl.textContent = rideDetails.estimated_distance_km
-                ? `${rideDetails.estimated_distance_km} km`
-                : `${DEFAULT_ESTIMATED_DISTANCE_KM} km`;
+            distanceEl.textContent = `${rideDetails.estimated_distance_km} km`;
         }
         if (durationEl) {
-            durationEl.textContent = rideDetails.estimated_minutes
-                ? `${rideDetails.estimated_minutes} mins`
-                : `${DEFAULT_ESTIMATED_DURATION_MINUTES} mins`;
+            durationEl.textContent = `${rideDetails.estimated_minutes} mins`;
         }
         if (fareEl) {
             fareEl.textContent = formatFare(rideDetails.estimated_fare);
@@ -674,7 +775,13 @@
             const payload = {
                 pickup_location: pendingRide.pickup,
                 drop_location: pendingRide.destination,
-                vehicle_type: pendingRide.vehicle_type
+                vehicle_type: pendingRide.vehicle_type,
+                distance_km: pendingRide.estimated_distance_km,
+                duration_minutes: pendingRide.estimated_minutes,
+                pickup_lat: pendingRide.pickup_lat,
+                pickup_lon: pendingRide.pickup_lon,
+                drop_lat: pendingRide.drop_lat,
+                drop_lon: pendingRide.drop_lon
             };
 
             const endpoint = API_CONFIG.ENDPOINTS.rideRequests || "/api/ride-requests";
@@ -706,6 +813,13 @@
             if (searchForm) {
                 searchForm.reset();
             }
+            selectedPickup = null;
+            selectedDestination = null;
+            selectedRoute = null;
+            const pickupSelect = document.getElementById("pickup");
+            const destinationSelect = document.getElementById("destination");
+            Array.from(pickupSelect?.options || []).forEach(option => { option.disabled = false; });
+            Array.from(destinationSelect?.options || []).forEach(option => { option.disabled = false; });
             const searchResults = document.getElementById("searchResultsSection");
             if (searchResults) {
                 searchResults.hidden = true;
@@ -1412,7 +1526,7 @@
     }
 
     /* ==========================================================================
-       6. Notifications Panel (Day 6 - Task 7)
+       6. Notifications panel
        ========================================================================== */
 
     /**

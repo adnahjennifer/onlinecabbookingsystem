@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CabGo | Passenger Login</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/theme.js"></script>
 </head>
 <body>
 
@@ -22,9 +23,9 @@
 
 <main class="container">
     <section class="card form-card">
-        <h2>Passenger Login</h2>
+        <h2>Login</h2>
 
-        <p>Enter your details to continue.</p>
+        <p>Sign in as a Passenger, Driver, or Admin. Use the demo credentials below to explore CabGo.</p>
 
         <form id="loginForm" novalidate>
             <label for="email">Email Address</label>
@@ -63,6 +64,19 @@
         </form>
 
         <div id="formMessage" class="message" role="status" aria-live="polite" hidden></div>
+
+        <section id="demoCredentials" class="demo-credentials" aria-labelledby="demoCredentialsTitle" hidden>
+            <h3 id="demoCredentialsTitle">Demo credentials</h3>
+            <p>These credentials are shown only on the local development site.</p>
+            <ul>
+                <li><strong>Passenger</strong> — <code>harini@example.com</code></li>
+                <li><strong>Passenger</strong> — <code>amritha@example.com</code></li>
+                <li><strong>Passenger</strong> — <code>adnah@example.com</code></li>
+                <li><strong>Driver</strong> — <code>driver1@example.com</code></li>
+                <li><strong>Superadmin</strong> — <code>system.admin@example.com</code></li>
+            </ul>
+            <p><strong>Password for all demo accounts:</strong> <code>Demo2026!</code></p>
+        </section>
 
         <p>
             New passenger?

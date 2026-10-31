@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System Logs | CabGo Super Admin</title>
+  <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
+  <script src="../js/api.js" defer></script>
+  <script src="../js/member3.js" defer></script>
+</head>
+<body data-role="superadmin" data-page="superadmin-logs">
+  <header class="topbar">
+    <a class="brand" href="dashboard.html">CabGo <span>Super Admin</span></a>
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <span class="user-chip">System Owner · SA-01</span>
+      <a href="../login.html" class="top-link" id="superLogoutBtn">Logout</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="nav-label">SYSTEM GOVERNANCE</p>
+      <a href="dashboard.html">Overview</a>
+      <a href="admins.html">Administrators</a>
+      <a href="permissions.html">Permissions</a>
+      <a href="settings.html">System Settings</a>
+      <a class="active" href="logs.html">System Logs</a>
+    </aside>
+
+    <main class="main">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">AUDIT & COMPLIANCE</p>
+          <h1>System Activity Logs</h1>
+          <p class="muted">Tamper-evident audit trail capturing administrative events, security checks, and platform actions.</p>
+        </div>
+        <span class="mode-badge" id="dataModeBadge">Checking mode...</span>
+      </div>
+
+      <section class="panel">
+        <div class="panel-heading" style="flex-wrap: wrap; gap: 15px;">
+          <h2>Security & Operational Events</h2>
+          <div>
+            <input type="search" id="logSearchInput" placeholder="Filter by actor, action or detail..." style="padding: 7px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; width: 280px;">
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Actor</th>
+                <th>Event Action</th>
+                <th>Status</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody id="logsTableBody">
+              <tr><td colspan="5" class="loading-state"><div class="spinner"></div> Loading system audit logs...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer>CabGo Super Administrator Governance</footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -8,8 +8,7 @@
 
 /**
  * Role redirection map for CabGo user roles.
- * Driver, admin, and super_admin dashboards belong to Member 3.
- * File names must be confirmed with Member 3 before final integration.
+ * Driver, admin, and super_admin dashboards use the shared dashboard controller.
  */
 const ROLE_REDIRECTS = {
     passenger: "passenger-dashboard.html",
@@ -35,6 +34,10 @@ document.addEventListener("DOMContentLoaded", function () {
     initRegistrationForm();
     initLoginForm();
     checkRegisteredUrlBanner();
+    const demoCredentials = document.getElementById("demoCredentials");
+    if (demoCredentials && ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) {
+        demoCredentials.hidden = false;
+    }
 });
 
 /* ==========================================================================

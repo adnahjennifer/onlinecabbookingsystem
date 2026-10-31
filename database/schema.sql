@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('passenger', 'driver', 'admin', 'super_admin')
         NOT NULL DEFAULT 'passenger',
+    account_status ENUM('active', 'blocked', 'disabled')
+        NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -127,4 +129,17 @@ CREATE TABLE IF NOT EXISTS notifications (
 
     FOREIGN KEY (request_id)
         REFERENCES ride_requests(request_id)
+) ENGINE=InnoDB;
+
+-- 9. Persistent authentication sessions
+CREATE TABLE IF NOT EXISTS user_sessions (
+    session_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    expires_at DATETIME NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    revoked_at DATETIME NULL,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    INDEX idx_user_sessions_user_active (user_id, revoked_at, expires_at)
 ) ENGINE=InnoDB;

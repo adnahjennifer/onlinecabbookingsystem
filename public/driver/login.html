@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Driver Login | CabGo</title>
   <link rel="stylesheet" href="../css/member3.css">
+  <script src="../js/theme.js"></script>
   <script src="../js/api.js"></script>
   <script src="../js/member3.js" defer></script>
 </head>
@@ -21,13 +22,13 @@
       <p class="muted">Sign in to access your ride requests, vehicles, and earnings.</p>
       <form id="driverLoginForm" novalidate>
         <label for="email">Email address</label>
-        <input id="email" name="email" type="email" placeholder="driver@example.com" value="driver@example.com" autocomplete="username" required>
+        <input id="email" name="email" type="email" placeholder="driver@example.com" autocomplete="username" required>
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" placeholder="Enter your password" value="Password123" autocomplete="current-password" required minlength="6">
-        <p id="loginMessage" class="message" role="status">Demo account: driver@example.com / Password123</p>
+        <input id="password" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required minlength="6">
+        <p id="loginMessage" class="message" role="status" hidden></p>
         <button class="button auth-submit" type="submit" id="driverLoginSubmitBtn">Continue to dashboard</button>
       </form>
-      <p class="auth-footnote">Online Cab Booking System · Member 3 Driver Authentication</p>
+      <p class="auth-footnote">Online Cab Booking System · Driver Authentication</p>
     </section>
   </main>
 </body>
