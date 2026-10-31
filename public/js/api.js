@@ -219,60 +219,6 @@ function getMockUsers() {
     } catch (err) {
         console.error("Failed to parse mockUsers from localStorage:", err);
     }
-
-    let modified = false;
-
-    // Default sample passenger for quick test login
-    if (!users.some((u) => u.email && u.email.toLowerCase() === "alex@example.com")) {
-        users.push({
-            id: 1,
-            user_id: 1,
-            name: "Alex",
-            full_name: "Alex",
-            email: "alex@example.com",
-            password: "Password123",
-            role: "passenger"
-        });
-        modified = true;
-    }
-
-    // Secondary sample passenger for quick test login
-    if (!users.some((u) => u.email && u.email.toLowerCase() === "passenger@example.com")) {
-        users.push({
-            id: 2,
-            user_id: 2,
-            name: "Passenger",
-            full_name: "Passenger User",
-            email: "passenger@example.com",
-            password: "Password123",
-            role: "passenger"
-        });
-        modified = true;
-    }
-
-    // Default sample driver for quick test login
-    if (!users.some((u) => u.email && u.email.toLowerCase() === "driver@example.com")) {
-        users.push({
-            id: 102,
-            user_id: 102,
-            driver_id: 102,
-            name: "Arjun S.",
-            full_name: "Arjun S.",
-            email: "driver@example.com",
-            password: "Password123",
-            role: "driver"
-        });
-        modified = true;
-    }
-
-    if (modified || users.length === 0) {
-        try {
-            localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(users));
-        } catch (err) {
-            console.error("Failed to save default mockUsers:", err);
-        }
-    }
-
     return users;
 }
 
@@ -307,44 +253,6 @@ function getMockBookings(userId) {
     } catch (err) {
         console.error("Failed to parse mock bookings:", err);
     }
-
-    // Default sample completed trips for default user (Alex) to demonstrate history/stats on fresh load
-    if (userId === 1 || userId === "1") {
-        const defaultBookings = [
-            {
-                request_id: 1001,
-                pickup_location: "Chennai Central",
-                drop_location: "Marina Beach",
-                vehicle_type: "standard",
-                estimated_fare: 180.00,
-                final_fare: 180.00,
-                status: "completed",
-                created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-                driver: { full_name: "Ramesh Babu", rating: 4.8 },
-                vehicle: { registration_number: "TN-01-AB-1234", model: "Maruti Swift", vehicle_type: "standard" }
-            },
-            {
-                request_id: 1002,
-                pickup_location: "Egmore Railway Station",
-                drop_location: "T. Nagar",
-                vehicle_type: "sedan",
-                estimated_fare: 240.00,
-                final_fare: 240.00,
-                status: "completed",
-                created_at: new Date(Date.now() - 86400000).toISOString(),
-                driver: { full_name: "Karthik Raja", rating: 4.9 },
-                vehicle: { registration_number: "TN-02-CD-5678", model: "Honda City", vehicle_type: "sedan" }
-            }
-        ];
-
-        try {
-            localStorage.setItem(key, JSON.stringify(defaultBookings));
-        } catch (e) {
-            // ignore
-        }
-        return defaultBookings;
-    }
-
     return [];
 }
 
@@ -1583,13 +1491,44 @@ async function apiRequest(path, method = "GET", body = null) {
         try {
             const response = await fetch(url, options);
 
-            let data;
+            let data = null;
             try {
                 data = await response.json();
             } catch (jsonErr) {
-                data = {
-                    message: "Unexpected server response."
-                };
+                // Response body is not valid JSON (e.g. static 404 text, HTML error, empty body)
+                data = null;
+            }
+
+            // If the server did not return a JSON object, construct friendly structured error data
+            if (!data || typeof data !== "object") {
+                if (response.status === 404) {
+                    data = {
+                        error: { code: "NOT_FOUND", message: "The requested service or page was not found (404)." },
+                        message: "The requested service was not found."
+                    };
+                } else if (response.status === 401) {
+                    data = {
+                        error: { code: "UNAUTHENTICATED", message: "Please log in to continue." },
+                        message: "Please log in to continue."
+                    };
+                } else if (response.status === 403) {
+                    data = {
+                        error: { code: "FORBIDDEN", message: "You do not have permission to access this resource." },
+                        message: "Access forbidden."
+                    };
+                } else if (response.status >= 500) {
+                    data = {
+                        error: { code: "SERVER_ERROR", message: "The server encountered an error. Please try again later." },
+                        message: "The server encountered an error. Please try again later."
+                    };
+                } else if (response.ok) {
+                    data = { message: "Operation completed." };
+                } else {
+                    data = {
+                        error: { code: "REQUEST_FAILED", message: `Request failed with status ${response.status}.` },
+                        message: `Request failed with status ${response.status}.`
+                    };
+                }
             }
 
             result = {
@@ -1604,9 +1543,9 @@ async function apiRequest(path, method = "GET", body = null) {
                 data: {
                     error: {
                         code: "NETWORK_ERROR",
-                        message: "Cannot reach the server. Check your connection and try again."
+                        message: "Cannot reach the server. Make sure the server is running on http://localhost:3000 and check your connection."
                     },
-                    message: "Cannot reach the server. Check your connection and try again."
+                    message: "Cannot reach the server. Make sure the server is running on http://localhost:3000 and check your connection."
                 }
             };
         }
