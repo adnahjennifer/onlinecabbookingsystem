@@ -209,36 +209,42 @@
         initVisibilityHandling();
 
         // 2. Real session verification with GET /api/me
+        // Only log out on a genuine 401 — 500 or network errors keep the cached session.
         try {
             const meRes = await apiRequest(API_CONFIG.ENDPOINTS.me || "/api/me", "GET");
-            if (!meRes.ok || meRes.status === 401) {
+
+            if (meRes.status === 401) {
                 clearSession();
                 window.location.replace("login.html?expired=1");
                 return;
             }
 
-            const verifiedUser = meRes.data && meRes.data.user ? normalizeUser(meRes.data.user) : null;
-            if (!verifiedUser || (verifiedUser.role && verifiedUser.role !== "passenger")) {
-                const roleRedirects = {
-                    driver: "driver/dashboard.html",
-                    admin: "admin/dashboard.html",
-                    super_admin: "superadmin/dashboard.html"
-                };
-                window.location.replace((verifiedUser && roleRedirects[verifiedUser.role]) || "login.html");
-                return;
+            if (meRes.ok && meRes.data && meRes.data.user) {
+                const verifiedUser = normalizeUser(meRes.data.user);
+                if (verifiedUser && verifiedUser.role && verifiedUser.role !== "passenger") {
+                    const roleRedirects = {
+                        driver: "driver/dashboard.html",
+                        admin: "admin/dashboard.html",
+                        super_admin: "superadmin/dashboard.html"
+                    };
+                    window.location.replace(roleRedirects[verifiedUser.role] || "login.html");
+                    return;
+                }
+                if (verifiedUser) {
+                    saveSession(verifiedUser, session.token || null);
+                    if (greetingEl) {
+                        greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
+                    }
+                }
             }
-
-            // Sync verified user data in session storage
-            saveSession(verifiedUser, session.token || null);
-            if (greetingEl) {
-                greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
-            }
+            // 500 / network error (status 0): silently keep cached session and load dashboard
         } catch (err) {
-            // Network failure will be handled by apiRequest or offline states
+            // Network failure — keep cached session, continue loading dashboard
         }
 
         // Initial fetch of bookings and active status with loading indicators
         await fetchBookings(true);
+        await fetchNotifications(true);
 
         // Clear polling timer on page unload
         window.addEventListener("beforeunload", stopStatusPolling);
@@ -252,6 +258,7 @@
             if (document.hidden) {
                 stopStatusPolling();
             } else {
+                fetchNotifications(false);
                 const hasActive = currentBookings.some((b) =>
                     ["requested", "pending", "accepted", "started", "ongoing"].includes(b.status)
                 );
@@ -316,6 +323,33 @@
                 return;
             }
 
+            // Optional distance and duration inputs (Task 8)
+            const distInput = document.getElementById("distanceKm");
+            const durInput = document.getElementById("durationMin");
+
+            let estimatedDistanceKm = DEFAULT_ESTIMATED_DISTANCE_KM;
+            let estimatedDurationMinutes = DEFAULT_ESTIMATED_DURATION_MINUTES;
+
+            if (distInput && distInput.value.trim() !== "") {
+                const parsedDist = parseFloat(distInput.value.trim());
+                if (isNaN(parsedDist) || parsedDist < 1 || parsedDist > 200) {
+                    showMessage(searchMessage, "Distance must be a number between 1 and 200 km.", "error");
+                    distInput.focus();
+                    return;
+                }
+                estimatedDistanceKm = Number(parsedDist.toFixed(1));
+            }
+
+            if (durInput && durInput.value.trim() !== "") {
+                const parsedDur = parseInt(durInput.value.trim(), 10);
+                if (isNaN(parsedDur) || parsedDur < 1 || parsedDur > 600) {
+                    showMessage(searchMessage, "Estimated time must be between 1 and 600 minutes.", "error");
+                    durInput.focus();
+                    return;
+                }
+                estimatedDurationMinutes = parsedDur;
+            }
+
             // Show visible loading states: inside the button AND in the results container
             setButtonLoading(searchBtn, true, "Calculating Fares...");
             if (resultsSection) {
@@ -333,8 +367,8 @@
                         "POST",
                         {
                             vehicle_type: type,
-                            distance_km: DEFAULT_ESTIMATED_DISTANCE_KM,
-                            duration_minutes: DEFAULT_ESTIMATED_DURATION_MINUTES
+                            distance_km: estimatedDistanceKm,
+                            duration_minutes: estimatedDurationMinutes
                         }
                     )
                 );
@@ -477,6 +511,18 @@
             bookBtn.className = "button";
             bookBtn.textContent = `Book ${ride.vehicle_type ? ride.vehicle_type.charAt(0).toUpperCase() + ride.vehicle_type.slice(1) : "Ride"}`;
             bookBtn.addEventListener("click", function () {
+                const activeBooking = currentBookings.find((b) =>
+                    ["requested", "pending", "accepted", "started", "ongoing"].includes(b.status)
+                );
+                if (activeBooking) {
+                    showMessage(
+                        document.getElementById("searchMessage"),
+                        `You already have an active booking (#${activeBooking.request_id}). Please wait for it to finish or cancel it before booking another ride.`,
+                        "error"
+                    );
+                    return;
+                }
+
                 openBookingConfirmationModal({
                     pickup: pickup,
                     destination: destination,
@@ -631,15 +677,10 @@
                 vehicle_type: pendingRide.vehicle_type
             };
 
-            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests";
+            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || "/api/ride-requests";
             const response = await apiRequest(endpoint, "POST", payload);
 
-            if (response.status === 401) {
-                clearSession();
-                window.location.replace("login.html?expired=1");
-                return;
-            }
-
+            // 401 handled globally by apiRequest
             if (!response.ok) {
                 const errorMsg = getErrorMessage(
                     response.data,
@@ -754,15 +795,10 @@
         }
 
         try {
-            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests/mine";
+            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || "/api/ride-requests/mine";
             const response = await apiRequest(endpoint, "GET");
 
-            if (response.status === 401) {
-                clearSession();
-                window.location.replace("login.html?expired=1");
-                return;
-            }
-
+            // 401 is handled globally by apiRequest (auto-redirects to login)
             if (!response.ok) {
                 const bookingMsg = document.getElementById("bookingMessage");
                 const errorText = getErrorMessage(
@@ -968,13 +1004,14 @@
         } else {
             const waitingBox = document.createElement("div");
             waitingBox.className = "driver-waiting-box";
-            waitingBox.textContent = "Waiting for a driver to accept your ride request...";
+            waitingBox.textContent = (activeBooking.status === "requested" || activeBooking.status === "pending")
+                ? "Waiting for a driver to accept your ride request..."
+                : "Driver details will appear shortly...";
             detailsDiv.appendChild(waitingBox);
         }
 
-        // Cancellation Button: only allowed for cancellable statuses ('requested' or 'pending')
-        // Backend restricts cancellation to 'requested'; trips already started/completed cannot be cancelled
-        if (activeBooking.status === "requested" || activeBooking.status === "pending") {
+        // Cancellation Button: only allowed when status is 'requested' — server only cancels requested rides
+        if (activeBooking.status === "requested") {
             const cancelBtn = document.createElement("button");
             cancelBtn.type = "button";
             cancelBtn.className = "button danger";
@@ -1019,12 +1056,15 @@
     }
 
     /**
-     * Starts polling active bookings list every ~10s if not already running.
+     * Starts polling active bookings and notifications list every ~10s if not already running.
      * Ensures intervals are never duplicated.
      */
     function startStatusPolling() {
         if (!statusPollingTimer) {
-            statusPollingTimer = setInterval(() => fetchBookings(false), 10000);
+            statusPollingTimer = setInterval(() => {
+                fetchBookings(false);
+                fetchNotifications(false);
+            }, 10000);
         }
     }
 
@@ -1371,10 +1411,152 @@
         });
     }
 
+    /* ==========================================================================
+       6. Notifications Panel (Day 6 - Task 7)
+       ========================================================================== */
+
+    /**
+     * Fetches notifications for the logged-in passenger.
+     * @param {boolean} [isInitial=false]
+     */
+    async function fetchNotifications(isInitial = false) {
+        const container = document.getElementById("notificationsList");
+        const badge = document.getElementById("unreadNotificationsBadge");
+        if (!container) return;
+
+        if (isInitial) {
+            showContainerLoading(container, "Loading notifications...");
+        }
+
+        try {
+            const endpoint = (API_CONFIG.ENDPOINTS && API_CONFIG.ENDPOINTS.notifications) || "/api/notifications";
+            const response = await apiRequest(endpoint, "GET");
+
+            if (!response.ok) {
+                if (isInitial) {
+                    showContainerError(
+                        container,
+                        getErrorMessage(response.data, "Failed to load notifications."),
+                        () => fetchNotifications(true)
+                    );
+                }
+                return;
+            }
+
+            const notifications = (response.data && Array.isArray(response.data.notifications))
+                ? response.data.notifications
+                : [];
+
+            renderNotifications(notifications);
+        } catch (err) {
+            if (isInitial) {
+                showContainerError(
+                    container,
+                    "Failed to load notifications. Please retry.",
+                    () => fetchNotifications(true)
+                );
+            }
+        }
+    }
+
+    /**
+     * Renders notifications list cleanly using safe DOM APIs.
+     * @param {Array} list
+     */
+    function renderNotifications(list) {
+        const container = document.getElementById("notificationsList");
+        const badge = document.getElementById("unreadNotificationsBadge");
+        if (!container) return;
+
+        container.textContent = "";
+
+        const unreadCount = list.filter((n) => !n.is_read).length;
+        if (badge) {
+            if (unreadCount > 0) {
+                badge.textContent = String(unreadCount);
+                badge.hidden = false;
+            } else {
+                badge.hidden = true;
+            }
+        }
+
+        if (list.length === 0) {
+            showContainerEmpty(container, {
+                icon: "🔔",
+                title: "",
+                message: "No notifications yet."
+            });
+            return;
+        }
+
+        const listEl = document.createElement("div");
+        listEl.className = "notifications-list";
+
+        list.forEach((item) => {
+            const itemEl = document.createElement("div");
+            itemEl.className = "notification-item" + (!item.is_read ? " unread" : "");
+
+            const contentDiv = document.createElement("div");
+            contentDiv.className = "notification-content";
+
+            const msgP = document.createElement("p");
+            msgP.className = "notification-message";
+            msgP.textContent = item.message || "Notification";
+            contentDiv.appendChild(msgP);
+
+            const metaSpan = document.createElement("span");
+            metaSpan.className = "notification-meta";
+            let timeStr = "";
+            if (item.created_at) {
+                try {
+                    timeStr = new Date(item.created_at).toLocaleString("en-IN", {
+                        dateStyle: "short",
+                        timeStyle: "short"
+                    });
+                } catch (e) {
+                    timeStr = String(item.created_at);
+                }
+            }
+            metaSpan.textContent = timeStr ? timeStr : "";
+            contentDiv.appendChild(metaSpan);
+
+            const statusBadge = document.createElement("span");
+            statusBadge.className = "notification-status-badge " + (!item.is_read ? "unread" : "read");
+            statusBadge.textContent = !item.is_read ? "New" : "Read";
+
+            itemEl.appendChild(contentDiv);
+            itemEl.appendChild(statusBadge);
+
+            // Clicking an unread item marks it as read via PATCH
+            if (!item.is_read) {
+                itemEl.title = "Click to mark as read";
+                itemEl.addEventListener("click", async () => {
+                    const readUrl = typeof API_CONFIG.getMarkNotificationReadUrl === "function"
+                        ? API_CONFIG.getMarkNotificationReadUrl(item.notification_id)
+                        : `/api/notifications/${encodeURIComponent(item.notification_id)}/read`;
+                    try {
+                        const patchRes = await apiRequest(readUrl, "PATCH");
+                        if (patchRes.ok) {
+                            item.is_read = 1;
+                            renderNotifications(list);
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                });
+            }
+
+            listEl.appendChild(itemEl);
+        });
+
+        container.appendChild(listEl);
+    }
+
     // Expose for debugging if needed
     if (typeof window !== "undefined") {
         window.CabGoPassenger = {
             fetchBookings: fetchBookings,
+            fetchNotifications: fetchNotifications,
             openBookingConfirmationModal: openBookingConfirmationModal,
             openCancellationModal: openCancellationModal,
             normalizeBooking: normalizeBooking
