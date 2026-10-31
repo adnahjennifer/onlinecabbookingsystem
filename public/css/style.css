@@ -1161,7 +1161,7 @@ header nav {
 .hero {
     position: relative;
     overflow: hidden;
-    padding: clamp(48px, 9vw, 110px) clamp(26px, 8vw, 110px);
+    padding: clamp(56px, 10vw, 125px) clamp(26px, 8vw, 110px);
     text-align: left;
     border: 1px solid var(--border);
     border-radius: 2px;
