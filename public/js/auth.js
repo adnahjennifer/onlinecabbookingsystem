@@ -341,13 +341,13 @@ function initRegistrationForm() {
             );
 
             if (response.ok && response.status === 201) {
-                const successMsg =
-                    (response.data && response.data.message) ||
-                    "Registration successful! Redirecting to login...";
-                showMessage(formMessage, successMsg, "success");
-
                 registerForm.reset();
                 clearFormErrors(registerForm);
+                showMessage(
+                    formMessage,
+                    "Registration successful! Redirecting to login...",
+                    "success"
+                );
 
                 setTimeout(() => {
                     window.location.href = "login.html?registered=1";

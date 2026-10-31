@@ -924,3 +924,109 @@ footer {
         padding: 8px 14px;
     }
 }
+
+/* ==========================================================================
+   Form Row & Notifications (Day 6 - Tasks 7 & 8)
+   ========================================================================== */
+
+.form-row-2 {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.form-row-2 > div {
+    flex: 1;
+}
+
+.form-row-2 label small {
+    color: #64748b;
+    font-weight: normal;
+}
+
+.card-header-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.badge-unread {
+    background: #e02424;
+    color: #ffffff;
+    font-size: 11px;
+    padding: 2px 7px;
+    border-radius: 12px;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+
+.notifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px 14px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.notification-item.unread {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    cursor: pointer;
+}
+
+.notification-item.unread:hover {
+    background: #dbeafe;
+}
+
+.notification-content {
+    flex: 1;
+    margin-right: 12px;
+}
+
+.notification-message {
+    font-size: 14px;
+    color: #1e293b;
+    margin: 0 0 4px 0;
+    line-height: 1.4;
+}
+
+.notification-meta {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.notification-status-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+.notification-status-badge.unread {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.notification-status-badge.read {
+    background: #e2e8f0;
+    color: #64748b;
+}
+
+@media (max-width: 640px) {
+    .form-row-2 {
+        flex-direction: column;
+        gap: 0;
+    }
+}
+
