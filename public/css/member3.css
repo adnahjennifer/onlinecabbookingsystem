@@ -169,3 +169,63 @@ html,body{max-width:100%;overflow-x:hidden}
   .availability-control{justify-content:flex-start}
   .panel-heading>a{max-width:100%;white-space:normal}
 }
+
+/* Shared application sizing */
+.main {
+  max-width: 1440px;
+  padding: 32px clamp(22px, 3vw, 48px);
+}
+
+.sidebar {
+  width: 240px;
+  padding: 28px 18px;
+}
+
+.panel,
+.stat-card {
+  border-radius: 14px;
+}
+
+.panel {
+  padding: 24px;
+}
+
+.panel-heading h2 {
+  font-size: 18px;
+}
+
+.button,
+.panel input,
+.panel select,
+.panel textarea {
+  min-height: 44px;
+}
+
+.button {
+  padding: 11px 16px;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    width: 190px;
+  }
+
+  .main {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 620px) {
+  .sidebar {
+    width: 100%;
+    padding: 8px 10px;
+  }
+
+  .main {
+    padding: 20px 14px;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+}
