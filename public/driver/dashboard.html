@@ -12,7 +12,7 @@
   <header class="topbar">
     <a class="brand" href="dashboard.html">CabGo <span>Driver Portal</span></a>
     <div style="display:flex;align-items:center;gap:16px;">
-      <div class="user-chip" id="driverUserChip">Arjun S. · DRV-102</div>
+      <div class="user-chip" id="driverUserChip"></div>
       <button class="button button-small button-quiet" id="driverLogoutBtn" type="button" style="color:#ffffff;background:rgba(255,255,255,0.15);">Logout</button>
     </div>
   </header>
@@ -29,11 +29,11 @@
       <div class="page-heading">
         <div>
           <p class="eyebrow">DRIVER WORKSPACE</p>
-          <h1 id="driverGreeting">Good day, Arjun</h1>
+          <h1 id="driverGreeting">Good day</h1>
           <p class="muted">Here is your live driving summary and assigned rides.</p>
         </div>
         <div class="availability-control">
-          <span id="dataModeBadge" class="mode-badge mode-mock">Demo Mode</span>
+          <span id="dataModeBadge" class="mode-badge"></span>
           <span id="availabilityState" class="pill pill-success">Online</span>
           <button id="availabilityBtn" class="button button-success" type="button">Go offline</button>
         </div>
@@ -42,23 +42,23 @@
       <section class="stats">
         <article class="stat-card">
           <span class="muted">Completed Trips</span>
-          <strong id="statCompletedTrips">3</strong>
+          <strong id="statCompletedTrips">0</strong>
           <small id="statTripsSubtext">Recorded in trip history</small>
         </article>
         <article class="stat-card">
           <span class="muted">Total Earnings</span>
-          <strong id="statTotalEarnings">₹880.00</strong>
+          <strong id="statTotalEarnings">₹0.00</strong>
           <small id="statEarningsSubtext">Completed trips fare</small>
         </article>
         <article class="stat-card">
           <span class="muted">Average Fare / Trip</span>
-          <strong id="statAvgFare">₹293.33</strong>
+          <strong id="statAvgFare">₹0.00</strong>
           <small>Per completed ride</small>
         </article>
         <article class="stat-card">
           <span class="muted">Driver Rating</span>
-          <strong id="statDriverRating">4.8 <span class="star">★</span></strong>
-          <small>Verification: Approved</small>
+          <strong id="statDriverRating">- <span class="star">★</span></strong>
+          <small>Verification: --</small>
         </article>
       </section>
 
@@ -111,10 +111,10 @@
           <div id="overviewVehicleContent">
             <!-- Dynamically populated by member3.js -->
             <dl class="details">
-              <div><dt>Registration</dt><dd id="ovVehicleReg">TN 09 AB 1234</dd></div>
-              <div><dt>Model & Type</dt><dd id="ovVehicleModel">Maruti Swift (Standard)</dd></div>
-              <div><dt>Capacity</dt><dd id="ovVehicleCap">4 passengers</dd></div>
-              <div><dt>Approval Status</dt><dd><span class="pill pill-success" id="ovVehicleStatus">Approved</span></dd></div>
+              <div><dt>Registration</dt><dd id="ovVehicleReg">-</dd></div>
+              <div><dt>Model & Type</dt><dd id="ovVehicleModel">-</dd></div>
+              <div><dt>Capacity</dt><dd id="ovVehicleCap">-</dd></div>
+              <div><dt>Approval Status</dt><dd><span class="pill" id="ovVehicleStatus">-</span></dd></div>
             </dl>
           </div>
         </article>

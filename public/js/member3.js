@@ -372,8 +372,25 @@
 
       if (response.ok && response.data && Array.isArray(response.data.requests)) {
         state.requests = response.data.requests;
-        if (response.data.driver && response.data.driver.availability_status) {
-          updateAvailabilityUI(response.data.driver.availability_status);
+        if (response.data.driver) {
+          const d = response.data.driver;
+          if (d.availability_status) {
+            updateAvailabilityUI(d.availability_status);
+          }
+          // Render rating and verification status on dashboard stat card
+          const ratingEl = document.getElementById("statDriverRating");
+          if (ratingEl) {
+            const ratingVal = d.rating != null ? parseFloat(d.rating).toFixed(1) : "-";
+            ratingEl.innerHTML = `${ratingVal} <span class="star">★</span>`;
+            const ratingCard = ratingEl.closest(".stat-card");
+            const ratingSmall = ratingCard ? ratingCard.querySelector("small") : null;
+            if (ratingSmall) {
+              const vs = d.verification_status
+                ? capitalize(d.verification_status)
+                : "Unknown";
+              ratingSmall.textContent = `Verification: ${vs}`;
+            }
+          }
         }
         renderRequestsTable(state.requests, tbody);
         updateRequestCounts();
@@ -534,7 +551,7 @@
     // Overview stats
     const ovCompleted = document.getElementById("statCompletedTrips");
     if (ovCompleted) {
-      ovCompleted.textContent = completed + 3; // adding base prior history
+      ovCompleted.textContent = completed;
     }
   }
 
@@ -666,7 +683,7 @@
           try {
             const url = API_CONFIG.getDriverStartTripUrl
               ? API_CONFIG.getDriverStartTripUrl(tripId)
-              : `/api/driver/trips/${tripId}/start`;
+              : `/api/trips/${tripId}/start`;
 
             const response = await apiRequest(url, "POST");
 
@@ -786,7 +803,7 @@
         try {
           const url = API_CONFIG.getDriverCompleteTripUrl
             ? API_CONFIG.getDriverCompleteTripUrl(tripId)
-            : `/api/driver/trips/${tripId}/complete`;
+            : `/api/trips/${tripId}/complete`;
 
           const response = await apiRequest(url, "POST", { final_fare: fareVal });
 
@@ -1268,11 +1285,15 @@
     if (avgEl) avgEl.textContent = formatFare(avg);
     if (maxEl) maxEl.textContent = formatFare(maxFare);
 
-    // Overview stats on dashboard.html
+    // Overview stats on dashboard.html (authoritative completed-trip count from the DB)
     const ovTotal = document.getElementById("statTotalEarnings");
     const ovAvg = document.getElementById("statAvgFare");
+    const ovCompleted = document.getElementById("statCompletedTrips");
+    const ovSubtext = document.getElementById("statTripsSubtext");
     if (ovTotal) ovTotal.textContent = formatFare(total);
     if (ovAvg) ovAvg.textContent = formatFare(avg);
+    if (ovCompleted) ovCompleted.textContent = count;
+    if (ovSubtext) ovSubtext.textContent = count === 1 ? "1 trip completed" : `${count} trips completed`;
 
     if (!tbody) return;
 

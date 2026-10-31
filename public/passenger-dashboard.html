@@ -68,6 +68,33 @@
                 autocomplete="off"
             >
 
+            <div class="form-row-2">
+                <div>
+                    <label for="distanceKm">Approx. distance (km) <small>(optional)</small></label>
+                    <input
+                        type="number"
+                        id="distanceKm"
+                        name="distanceKm"
+                        placeholder="e.g. 10 (default: 10)"
+                        min="1"
+                        max="200"
+                        step="any"
+                    >
+                </div>
+                <div>
+                    <label for="durationMin">Approx. time (minutes) <small>(optional)</small></label>
+                    <input
+                        type="number"
+                        id="durationMin"
+                        name="durationMin"
+                        placeholder="e.g. 20 (default: 20)"
+                        min="1"
+                        max="600"
+                        step="1"
+                    >
+                </div>
+            </div>
+
             <button class="button" type="submit" id="searchSubmitBtn">Search Cabs</button>
         </form>
 
@@ -99,6 +126,16 @@
         ></div>
 
         <div id="activeBookingContent">
+            <!-- Dynamically populated by passenger.js -->
+        </div>
+    </section>
+
+    <!-- Notifications Card -->
+    <section class="card" id="notificationsCard">
+        <div class="card-header-flex">
+            <h3 style="margin: 0;">Notifications <span id="unreadNotificationsBadge" class="badge badge-unread" hidden>0</span></h3>
+        </div>
+        <div id="notificationsList" aria-live="polite">
             <!-- Dynamically populated by passenger.js -->
         </div>
     </section>
@@ -173,16 +210,43 @@
 <!-- In-Page Booking Cancellation Modal -->
 <div id="cancelBookingModal" class="confirm-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancelModalTitle" hidden>
     <div class="confirm-panel">
-        <h3 id="cancelModalTitle">Cancel Booking</h3>
+        <h3 id="cancelModalTitle">Cancel Ride Booking</h3>
 
         <p>Are you sure you want to cancel this booking?</p>
-        <p id="cancelModalWarning" style="color: #627d98; font-size: 13px;">This action cannot be undone.</p>
+        <p id="cancelModalWarning" style="color: #627d98; font-size: 13px; margin-top: -6px;">This action cannot be undone.</p>
 
         <div id="cancelModalMessage" class="message" role="status" aria-live="polite" hidden></div>
 
+        <div class="confirm-summary-list" id="cancelSummaryList">
+            <div class="confirm-summary-item">
+                <strong>Booking ID:</strong>
+                <span id="cancelBookingId"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Pickup:</strong>
+                <span id="cancelPickup"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Destination:</strong>
+                <span id="cancelDestination"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Vehicle Type:</strong>
+                <span id="cancelVehicleType" style="text-transform: capitalize;"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Estimated Fare:</strong>
+                <span id="cancelFare" class="fare-highlight"></span>
+            </div>
+            <div class="confirm-summary-item">
+                <strong>Booked At:</strong>
+                <span id="cancelTime"></span>
+            </div>
+        </div>
+
         <div class="confirm-actions">
-            <button class="button danger" type="button" id="confirmCancelBtn">Yes, Cancel Booking</button>
-            <button class="button secondary" type="button" id="abortCancelBtn">No, Keep Booking</button>
+            <button class="button danger" type="button" id="confirmCancelBtn">Yes, cancel</button>
+            <button class="button secondary" type="button" id="abortCancelBtn">Keep booking</button>
         </div>
     </div>
 </div>
@@ -195,23 +259,25 @@
 <script>
     // Inline-safe session check for immediate protection before page renders
     (function () {
-        if (typeof getSession === "function") {
-            const session = getSession();
-            if (!session || !session.user) {
-                window.location.replace("login.html");
-                return;
-            }
-            // Role redirection: redirect non-passenger users to their specific dashboards
-            const role = session.user.role;
-            if (role && role !== "passenger") {
-                const roleRedirects = {
-                    driver: "driver/dashboard.html",
-                    admin: "admin/dashboard.html",
-                    super_admin: "superadmin/dashboard.html"
-                };
-                const target = roleRedirects[role] || "login.html";
-                window.location.replace(target);
-            }
+        if (typeof getSession !== "function") {
+            window.location.replace("login.html");
+            return;
+        }
+        const session = getSession();
+        if (!session || !session.user) {
+            window.location.replace("login.html");
+            return;
+        }
+        // Role redirection: redirect non-passenger users to their specific dashboards
+        const role = session.user.role;
+        if (role && role !== "passenger") {
+            const roleRedirects = {
+                driver: "driver/dashboard.html",
+                admin: "admin/dashboard.html",
+                super_admin: "superadmin/dashboard.html"
+            };
+            const target = roleRedirects[role] || "login.html";
+            window.location.replace(target);
         }
     })();
 </script>

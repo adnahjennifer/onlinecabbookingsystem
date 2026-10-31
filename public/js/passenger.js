@@ -1,18 +1,17 @@
 /**
  * CabGo - Online Cab Booking System
- * Passenger Dashboard Controller (Day 4 - Member 1)
+ * Passenger Dashboard Controller (Day 5 - Member 1 Polish)
  *
  * Implements:
- * 1. Session verification on load with GET /api/me and role guard.
- * 2. Real fare estimation for standard, sedan, and suv cabs using Promise.all.
- * 3. Booking creation via POST /api/ride-requests with server-computed fares.
- * 4. Real ride requests listing via GET /api/ride-requests/mine with normalization.
- * 5. Active booking card with live driver/vehicle details and status progression.
- * 6. Leak-free polling (~10s) with document visibility pause/resume and status change banners.
- * 7. Cancellation via POST /api/ride-requests/:id/cancel (requested status only).
- * 8. Trip history table (completed/cancelled) formatted with en-IN locale and stats cards.
+ * 1. Visual loading states on every Fetch call (spinner and text, button disabling with restore in finally).
+ * 2. Robust error handling across all HTTP status codes (400, 401, 403, 404, 409, 500, network failure).
+ * 3. Session expiration 401 auto-redirect to login with expired notice.
+ * 4. Inline Retry buttons on data load failure preventing blank pages or crashes.
+ * 5. Helpful empty states with actionable CTAs for search, active booking, and trip history.
+ * 6. In-page cancellation confirmation modal with booking details, focus trapping, backdrop click & Esc support.
+ * 7. Mobile-responsive card transformation for small screens (320px - 640px) with data-labels and min 44px touch targets.
  *
- * STRICT SECURITY: Zero innerHTML with server data (XSS prevention).
+ * STRICT SECURITY: Safe textContent and DOM APIs only (Zero innerHTML with server data).
  */
 
 "use strict";
@@ -27,8 +26,10 @@
     // Friendly status descriptions for passenger UI
     const STATUS_DESCRIPTIONS = {
         requested: "Looking for a driver...",
+        pending: "Looking for a driver...",
         accepted: "Driver is on the way",
         started: "Trip in progress",
+        ongoing: "Trip in progress",
         completed: "Trip completed",
         cancelled: "Cancelled"
     };
@@ -43,6 +44,50 @@
     const getErrorMessage = (typeof window !== "undefined" && window.getErrorMessage) ? window.getErrorMessage : (d, fb) => (d && (d.message || (d.error && d.error.message))) || fb;
     const apiRequest = (typeof window !== "undefined" && window.apiRequest) ? window.apiRequest : () => Promise.resolve({ ok: false, status: 0 });
     const showMessage = (typeof window !== "undefined" && window.showMessage) ? window.showMessage : () => {};
+
+    // Day 5 UI Utilities from api.js
+    const createSpinner = (typeof window !== "undefined" && window.createSpinner) ? window.createSpinner : (isDark = false) => {
+        const s = document.createElement("span");
+        s.className = "spinner" + (isDark ? " spinner-dark" : "");
+        s.setAttribute("aria-hidden", "true");
+        return s;
+    };
+    const setButtonLoading = (typeof window !== "undefined" && window.setButtonLoading) ? window.setButtonLoading : (btn, loading, text) => {
+        if (!btn) return;
+        btn.disabled = loading;
+        if (loading) {
+            btn.setAttribute("aria-busy", "true");
+            btn.textContent = text || "Loading...";
+        } else {
+            btn.removeAttribute("aria-busy");
+            btn.textContent = btn.dataset.originalText || "Submit";
+        }
+    };
+    const showContainerLoading = (typeof window !== "undefined" && window.showContainerLoading) ? window.showContainerLoading : (container, text) => {
+        if (!container) return;
+        container.textContent = text || "Loading...";
+    };
+    const showContainerError = (typeof window !== "undefined" && window.showContainerError) ? window.showContainerError : (container, msg, onRetry) => {
+        if (!container) return;
+        container.textContent = msg || "Error occurred.";
+        if (onRetry) {
+            const btn = document.createElement("button");
+            btn.textContent = "Retry";
+            btn.onclick = onRetry;
+            container.appendChild(btn);
+        }
+    };
+    const showContainerEmpty = (typeof window !== "undefined" && window.showContainerEmpty) ? window.showContainerEmpty : (container, opts) => {
+        if (!container) return;
+        container.textContent = opts.message || "No items found.";
+    };
+    const trapModalFocus = (typeof window !== "undefined" && window.trapModalFocus) ? window.trapModalFocus : (modal, onClose) => {
+        const handler = (e) => {
+            if (e.key === "Escape") onClose();
+        };
+        document.addEventListener("keydown", handler);
+        return () => document.removeEventListener("keydown", handler);
+    };
 
     // Polling interval reference for active bookings
     let statusPollingTimer = null;
@@ -65,6 +110,10 @@
 
     // Is cancellation in flight
     let isCancellingPending = false;
+
+    // Modal focus trap cleanup callbacks
+    let confirmModalCleanup = null;
+    let cancelModalCleanup = null;
 
     /* ==========================================================================
        Normalization Helper
@@ -160,36 +209,42 @@
         initVisibilityHandling();
 
         // 2. Real session verification with GET /api/me
+        // Only log out on a genuine 401 — 500 or network errors keep the cached session.
         try {
             const meRes = await apiRequest(API_CONFIG.ENDPOINTS.me || "/api/me", "GET");
-            if (!meRes.ok || meRes.status === 401) {
+
+            if (meRes.status === 401) {
                 clearSession();
-                window.location.replace("login.html");
+                window.location.replace("login.html?expired=1");
                 return;
             }
 
-            const verifiedUser = meRes.data && meRes.data.user ? normalizeUser(meRes.data.user) : null;
-            if (!verifiedUser || (verifiedUser.role && verifiedUser.role !== "passenger")) {
-                const roleRedirects = {
-                    driver: "driver/dashboard.html",
-                    admin: "admin/dashboard.html",
-                    super_admin: "superadmin/dashboard.html"
-                };
-                window.location.replace((verifiedUser && roleRedirects[verifiedUser.role]) || "login.html");
-                return;
+            if (meRes.ok && meRes.data && meRes.data.user) {
+                const verifiedUser = normalizeUser(meRes.data.user);
+                if (verifiedUser && verifiedUser.role && verifiedUser.role !== "passenger") {
+                    const roleRedirects = {
+                        driver: "driver/dashboard.html",
+                        admin: "admin/dashboard.html",
+                        super_admin: "superadmin/dashboard.html"
+                    };
+                    window.location.replace(roleRedirects[verifiedUser.role] || "login.html");
+                    return;
+                }
+                if (verifiedUser) {
+                    saveSession(verifiedUser, session.token || null);
+                    if (greetingEl) {
+                        greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
+                    }
+                }
             }
-
-            // Sync verified user data in session storage
-            saveSession(verifiedUser, session.token || null);
-            if (greetingEl) {
-                greetingEl.textContent = verifiedUser.name || verifiedUser.full_name || "Passenger";
-            }
+            // 500 / network error (status 0): silently keep cached session and load dashboard
         } catch (err) {
-            // Network failure will be handled by apiRequest or offline states
+            // Network failure — keep cached session, continue loading dashboard
         }
 
-        // Initial fetch of bookings and active status
-        await fetchBookings();
+        // Initial fetch of bookings and active status with loading indicators
+        await fetchBookings(true);
+        await fetchNotifications(true);
 
         // Clear polling timer on page unload
         window.addEventListener("beforeunload", stopStatusPolling);
@@ -203,11 +258,12 @@
             if (document.hidden) {
                 stopStatusPolling();
             } else {
+                fetchNotifications(false);
                 const hasActive = currentBookings.some((b) =>
-                    ["requested", "accepted", "started"].includes(b.status)
+                    ["requested", "pending", "accepted", "started", "ongoing"].includes(b.status)
                 );
                 if (hasActive) {
-                    fetchBookings();
+                    fetchBookings(false);
                     startStatusPolling();
                 }
             }
@@ -237,16 +293,10 @@
             const pickup = pickupInput ? pickupInput.value.trim() : "";
             const destination = destinationInput ? destinationInput.value.trim() : "";
 
-            // Hide previous messages and results
+            // Hide previous messages and reset results container
             if (searchMessage) {
                 searchMessage.hidden = true;
                 searchMessage.textContent = "";
-            }
-            if (resultsSection) {
-                resultsSection.hidden = true;
-            }
-            if (cardsGrid) {
-                cardsGrid.textContent = "";
             }
 
             // Route validation: both required, must differ, max 255 chars
@@ -273,11 +323,41 @@
                 return;
             }
 
-            // Set loading state
-            searchBtn.disabled = true;
-            searchBtn.setAttribute("aria-busy", "true");
-            const originalBtnText = searchBtn.textContent;
-            searchBtn.textContent = "Calculating Fares...";
+            // Optional distance and duration inputs (Task 8)
+            const distInput = document.getElementById("distanceKm");
+            const durInput = document.getElementById("durationMin");
+
+            let estimatedDistanceKm = DEFAULT_ESTIMATED_DISTANCE_KM;
+            let estimatedDurationMinutes = DEFAULT_ESTIMATED_DURATION_MINUTES;
+
+            if (distInput && distInput.value.trim() !== "") {
+                const parsedDist = parseFloat(distInput.value.trim());
+                if (isNaN(parsedDist) || parsedDist < 1 || parsedDist > 200) {
+                    showMessage(searchMessage, "Distance must be a number between 1 and 200 km.", "error");
+                    distInput.focus();
+                    return;
+                }
+                estimatedDistanceKm = Number(parsedDist.toFixed(1));
+            }
+
+            if (durInput && durInput.value.trim() !== "") {
+                const parsedDur = parseInt(durInput.value.trim(), 10);
+                if (isNaN(parsedDur) || parsedDur < 1 || parsedDur > 600) {
+                    showMessage(searchMessage, "Estimated time must be between 1 and 600 minutes.", "error");
+                    durInput.focus();
+                    return;
+                }
+                estimatedDurationMinutes = parsedDur;
+            }
+
+            // Show visible loading states: inside the button AND in the results container
+            setButtonLoading(searchBtn, true, "Calculating Fares...");
+            if (resultsSection) {
+                resultsSection.hidden = false;
+            }
+            if (cardsGrid) {
+                showContainerLoading(cardsGrid, "Calculating fares for available cabs...");
+            }
 
             try {
                 const vehicleTypes = ["standard", "sedan", "suv"];
@@ -287,8 +367,8 @@
                         "POST",
                         {
                             vehicle_type: type,
-                            distance_km: DEFAULT_ESTIMATED_DISTANCE_KM,
-                            duration_minutes: DEFAULT_ESTIMATED_DURATION_MINUTES
+                            distance_km: estimatedDistanceKm,
+                            duration_minutes: estimatedDurationMinutes
                         }
                     )
                 );
@@ -319,6 +399,13 @@
                         : "Failed to calculate cab fares. Please try again.";
                     const errorMsg = lastError ? getErrorMessage(lastError.data, fallbackMsg) : fallbackMsg;
                     showMessage(searchMessage, errorMsg, "error");
+
+                    // Show inline error card with Retry button in cardsGrid
+                    if (cardsGrid) {
+                        showContainerError(cardsGrid, errorMsg, () => {
+                            searchForm.dispatchEvent(new Event("submit"));
+                        });
+                    }
                     return;
                 }
 
@@ -332,18 +419,21 @@
 
                 renderSearchResults(successfulRides, pickup, destination);
             } catch (err) {
-                showMessage(searchMessage, "An unexpected error occurred while calculating fares.", "error");
+                const errMsg = "An unexpected error occurred while calculating fares. Please retry.";
+                showMessage(searchMessage, errMsg, "error");
+                if (cardsGrid) {
+                    showContainerError(cardsGrid, errMsg, () => {
+                        searchForm.dispatchEvent(new Event("submit"));
+                    });
+                }
             } finally {
-                searchBtn.disabled = false;
-                searchBtn.removeAttribute("aria-busy");
-                searchBtn.textContent = originalBtnText;
+                setButtonLoading(searchBtn, false);
             }
         });
     }
 
     /**
      * Renders cab search result cards safely using document.createElement.
-     * Note: Available driver count is omitted as real backend does not provide it.
      * @param {Array} rides
      * @param {string} pickup
      * @param {string} destination
@@ -351,6 +441,8 @@
     function renderSearchResults(rides, pickup, destination) {
         const resultsSection = document.getElementById("searchResultsSection");
         const cardsGrid = document.getElementById("rideCardsGrid");
+        const pickupInput = document.getElementById("pickup");
+        const destinationInput = document.getElementById("destination");
 
         if (!resultsSection || !cardsGrid) {
             return;
@@ -359,14 +451,18 @@
         cardsGrid.textContent = "";
 
         if (rides.length === 0) {
-            const emptyDiv = document.createElement("div");
-            emptyDiv.className = "empty-state";
-
-            const p = document.createElement("p");
-            p.textContent = "No cabs are currently available for this route. Please try again shortly.";
-            emptyDiv.appendChild(p);
-
-            cardsGrid.appendChild(emptyDiv);
+            showContainerEmpty(cardsGrid, {
+                icon: "🚕",
+                title: "No Cabs Available",
+                message: "No cabs are currently available for this route. Try adjusting your destination or check back shortly.",
+                ctaText: "Clear Route",
+                ctaCallback: () => {
+                    if (pickupInput) pickupInput.value = "";
+                    if (destinationInput) destinationInput.value = "";
+                    if (pickupInput) pickupInput.focus();
+                    resultsSection.hidden = true;
+                }
+            });
             resultsSection.hidden = false;
             return;
         }
@@ -415,6 +511,18 @@
             bookBtn.className = "button";
             bookBtn.textContent = `Book ${ride.vehicle_type ? ride.vehicle_type.charAt(0).toUpperCase() + ride.vehicle_type.slice(1) : "Ride"}`;
             bookBtn.addEventListener("click", function () {
+                const activeBooking = currentBookings.find((b) =>
+                    ["requested", "pending", "accepted", "started", "ongoing"].includes(b.status)
+                );
+                if (activeBooking) {
+                    showMessage(
+                        document.getElementById("searchMessage"),
+                        `You already have an active booking (#${activeBooking.request_id}). Please wait for it to finish or cancel it before booking another ride.`,
+                        "error"
+                    );
+                    return;
+                }
+
                 openBookingConfirmationModal({
                     pickup: pickup,
                     destination: destination,
@@ -452,18 +560,12 @@
         }
 
         cancelBtn.addEventListener("click", closeBookingConfirmationModal);
-
-        document.addEventListener("keydown", function (event) {
-            if (event.key === "Escape" && !modal.hidden) {
-                closeBookingConfirmationModal();
-            }
-        });
-
         confirmBtn.addEventListener("click", handleConfirmBookingSubmission);
     }
 
     /**
      * Opens the in-page confirmation panel with selected ride details.
+     * Traps focus and adds backdrop click handling.
      * @param {Object} rideDetails
      */
     function openBookingConfirmationModal(rideDetails) {
@@ -478,6 +580,7 @@
         const durationEl = document.getElementById("confirmDuration");
         const fareEl = document.getElementById("confirmFare");
         const confirmBtn = document.getElementById("confirmBookingBtn");
+        const cancelBtn = document.getElementById("cancelConfirmBtn");
 
         if (modalMsg) {
             modalMsg.hidden = true;
@@ -509,9 +612,18 @@
 
         if (modal) {
             modal.hidden = false;
+            if (typeof confirmModalCleanup === "function") {
+                confirmModalCleanup();
+            }
+            confirmModalCleanup = trapModalFocus(modal, closeBookingConfirmationModal);
         }
+
         if (confirmBtn) {
+            setButtonLoading(confirmBtn, false);
             confirmBtn.focus();
+        }
+        if (cancelBtn) {
+            cancelBtn.disabled = false;
         }
     }
 
@@ -520,15 +632,17 @@
         if (modal) {
             modal.hidden = true;
         }
+        if (typeof confirmModalCleanup === "function") {
+            confirmModalCleanup();
+            confirmModalCleanup = null;
+        }
         pendingRide = null;
         isBookingPending = false;
 
         const confirmBtn = document.getElementById("confirmBookingBtn");
         const cancelBtn = document.getElementById("cancelConfirmBtn");
         if (confirmBtn) {
-            confirmBtn.disabled = false;
-            confirmBtn.removeAttribute("aria-busy");
-            confirmBtn.textContent = "Confirm Booking";
+            setButtonLoading(confirmBtn, false);
         }
         if (cancelBtn) {
             cancelBtn.disabled = false;
@@ -537,7 +651,7 @@
 
     /**
      * Handles the actual booking submission to POST /api/ride-requests.
-     * Server calculates estimated fare itself; do NOT send estimated_fare.
+     * Prevents double clicks and restores buttons in finally block.
      */
     async function handleConfirmBookingSubmission() {
         if (!pendingRide || isBookingPending) {
@@ -551,32 +665,22 @@
 
         // Prevent double booking / double clicks
         isBookingPending = true;
-        if (confirmBtn) {
-            confirmBtn.disabled = true;
-            confirmBtn.setAttribute("aria-busy", "true");
-            confirmBtn.textContent = "Confirming...";
-        }
+        setButtonLoading(confirmBtn, true, "Confirming...");
         if (cancelBtn) {
             cancelBtn.disabled = true;
         }
 
         try {
-            // POST /api/ride-requests with only pickup_location, drop_location, and vehicle_type
             const payload = {
                 pickup_location: pendingRide.pickup,
                 drop_location: pendingRide.destination,
                 vehicle_type: pendingRide.vehicle_type
             };
 
-            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests";
+            const endpoint = API_CONFIG.ENDPOINTS.rideRequests || "/api/ride-requests";
             const response = await apiRequest(endpoint, "POST", payload);
 
-            if (response.status === 401) {
-                clearSession();
-                window.location.replace("login.html");
-                return;
-            }
-
+            // 401 handled globally by apiRequest
             if (!response.ok) {
                 const errorMsg = getErrorMessage(
                     response.data,
@@ -616,7 +720,7 @@
             }
 
             // Immediate refresh of bookings, active section, stats & history
-            await fetchBookings();
+            await fetchBookings(false);
 
             // Smooth scroll to current booking section
             const currentBookingCard = document.getElementById("currentBookingCard");
@@ -627,11 +731,7 @@
             showMessage(modalMsg, "An error occurred while confirming your booking.", "error");
         } finally {
             isBookingPending = false;
-            if (confirmBtn) {
-                confirmBtn.disabled = false;
-                confirmBtn.removeAttribute("aria-busy");
-                confirmBtn.textContent = "Confirm Booking";
-            }
+            setButtonLoading(confirmBtn, false);
             if (cancelBtn) {
                 cancelBtn.disabled = false;
             }
@@ -653,7 +753,7 @@
         }
 
         const prev = bookings.find((b) => b.request_id === lastActiveBookingId);
-        if (prev && lastActiveBookingStatus && ["requested", "accepted", "started"].includes(lastActiveBookingStatus)) {
+        if (prev && lastActiveBookingStatus && ["requested", "pending", "accepted", "started", "ongoing"].includes(lastActiveBookingStatus)) {
             const bookingMsg = document.getElementById("bookingMessage");
             if (prev.status === "completed") {
                 if (bookingMsg) {
@@ -669,26 +769,83 @@
 
     /**
      * Fetches all passenger bookings from GET /api/ride-requests/mine and updates UI.
+     * @param {boolean} [isInitial=false] - Whether this is the first load of the dashboard.
      */
-    async function fetchBookings() {
+    async function fetchBookings(isInitial = false) {
+        const activeContainer = document.getElementById("activeBookingContent");
+        const tbody = document.getElementById("tripHistoryBody");
+
+        // Visible loading states on initial dashboard load
+        if (isInitial) {
+            if (activeContainer) {
+                showContainerLoading(activeContainer, "Loading your booking status...");
+            }
+            if (tbody) {
+                tbody.textContent = "";
+                const tr = document.createElement("tr");
+                const td = document.createElement("td");
+                td.colSpan = 7;
+                td.className = "empty-state-cell";
+                td.setAttribute("aria-busy", "true");
+                td.appendChild(createSpinner(true));
+                td.appendChild(document.createTextNode(" Loading trip history..."));
+                tr.appendChild(td);
+                tbody.appendChild(tr);
+            }
+        }
+
         try {
-            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || API_CONFIG.ENDPOINTS.bookings || "/api/ride-requests/mine";
+            const endpoint = API_CONFIG.ENDPOINTS.myRideRequests || "/api/ride-requests/mine";
             const response = await apiRequest(endpoint, "GET");
 
-            if (response.status === 401) {
-                clearSession();
-                window.location.replace("login.html");
-                return;
-            }
-
+            // 401 is handled globally by apiRequest (auto-redirects to login)
             if (!response.ok) {
                 const bookingMsg = document.getElementById("bookingMessage");
-                if (bookingMsg && bookingMsg.hidden) {
-                    showMessage(
-                        bookingMsg,
-                        getErrorMessage(response.data, "Unable to refresh bookings. Retrying shortly..."),
-                        "error"
-                    );
+                const errorText = getErrorMessage(
+                    response.data,
+                    response.status === 0
+                        ? "Cannot reach the server. Please check your connection."
+                        : "Unable to retrieve your bookings."
+                );
+
+                // If initial load failed or no bookings cached, render an inline error card with Retry button
+                if (isInitial || currentBookings.length === 0) {
+                    if (activeContainer) {
+                        showContainerError(
+                            activeContainer,
+                            errorText,
+                            () => fetchBookings(true)
+                        );
+                    }
+                    if (tbody) {
+                        tbody.textContent = "";
+                        const tr = document.createElement("tr");
+                        const td = document.createElement("td");
+                        td.colSpan = 7;
+                        td.className = "empty-state-cell";
+
+                        const errorCard = document.createElement("div");
+                        errorCard.className = "inline-error-card";
+                        errorCard.style.maxWidth = "360px";
+                        errorCard.style.margin = "8px auto";
+
+                        const p = document.createElement("p");
+                        p.textContent = errorText;
+                        errorCard.appendChild(p);
+
+                        const retryBtn = document.createElement("button");
+                        retryBtn.type = "button";
+                        retryBtn.className = "retry-button";
+                        retryBtn.textContent = "Retry Trip History";
+                        retryBtn.addEventListener("click", () => fetchBookings(true));
+                        errorCard.appendChild(retryBtn);
+
+                        td.appendChild(errorCard);
+                        tr.appendChild(td);
+                        tbody.appendChild(tr);
+                    }
+                } else if (bookingMsg && bookingMsg.hidden) {
+                    showMessage(bookingMsg, `${errorText} (Retrying automatically...)`, "error");
                 }
                 return;
             }
@@ -709,7 +866,15 @@
             updateTripHistoryTable(bookings);
             updateActiveBookingSection(bookings);
         } catch (err) {
-            // Silently handle polling errors to avoid interrupting user interaction
+            if (isInitial) {
+                if (activeContainer) {
+                    showContainerError(
+                        activeContainer,
+                        "Failed to load bookings. Please check your connection and retry.",
+                        () => fetchBookings(true)
+                    );
+                }
+            }
         }
     }
 
@@ -723,38 +888,35 @@
             return;
         }
 
-        // Find active booking: requested, accepted, or started
+        // Find active booking: requested, pending, accepted, started, or ongoing
         const activeBooking = bookings.find((b) =>
-            ["requested", "accepted", "started"].includes(b.status)
+            ["requested", "pending", "accepted", "started", "ongoing"].includes(b.status)
         );
 
         container.textContent = "";
 
         if (!activeBooking) {
-            // No active booking: stop polling and show empty state
+            // No active booking: stop polling and show empty state with CTA to Book a Ride
             stopStatusPolling();
             lastActiveBookingId = null;
             lastActiveBookingStatus = null;
 
-            const emptyDiv = document.createElement("div");
-            emptyDiv.className = "empty-state";
-
-            const iconSpan = document.createElement("span");
-            iconSpan.className = "empty-state-icon";
-            iconSpan.setAttribute("aria-hidden", "true");
-            iconSpan.textContent = "🚗";
-
-            const p1 = document.createElement("p");
-            p1.style.fontWeight = "bold";
-            p1.textContent = "No Active Booking";
-
-            const p2 = document.createElement("p");
-            p2.textContent = "You don't have any ongoing rides. Search and book a cab above to get started.";
-
-            emptyDiv.appendChild(iconSpan);
-            emptyDiv.appendChild(p1);
-            emptyDiv.appendChild(p2);
-            container.appendChild(emptyDiv);
+            showContainerEmpty(container, {
+                icon: "🚗",
+                title: "No Active Booking",
+                message: "You don't have any ongoing rides. Search and book a cab above to get started.",
+                ctaText: "Book a Ride",
+                ctaCallback: () => {
+                    const pickupInput = document.getElementById("pickup");
+                    if (pickupInput) {
+                        pickupInput.focus();
+                    }
+                    const searchForm = document.getElementById("searchForm");
+                    if (searchForm) {
+                        searchForm.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                }
+            });
             return;
         }
 
@@ -842,12 +1004,13 @@
         } else {
             const waitingBox = document.createElement("div");
             waitingBox.className = "driver-waiting-box";
-            waitingBox.textContent = "Waiting for a driver to accept your ride request...";
+            waitingBox.textContent = (activeBooking.status === "requested" || activeBooking.status === "pending")
+                ? "Waiting for a driver to accept your ride request..."
+                : "Driver details will appear shortly...";
             detailsDiv.appendChild(waitingBox);
         }
 
-        // Cancellation Button: only allowed for status 'requested'
-        // Backend restricts cancellation to 'requested'; accepted rides return 404
+        // Cancellation Button: only allowed when status is 'requested' — server only cancels requested rides
         if (activeBooking.status === "requested") {
             const cancelBtn = document.createElement("button");
             cancelBtn.type = "button";
@@ -893,12 +1056,15 @@
     }
 
     /**
-     * Starts polling active bookings list every ~10s if not already running.
+     * Starts polling active bookings and notifications list every ~10s if not already running.
      * Ensures intervals are never duplicated.
      */
     function startStatusPolling() {
         if (!statusPollingTimer) {
-            statusPollingTimer = setInterval(fetchBookings, 10000);
+            statusPollingTimer = setInterval(() => {
+                fetchBookings(false);
+                fetchNotifications(false);
+            }, 10000);
         }
     }
 
@@ -926,37 +1092,72 @@
         }
 
         abortBtn.addEventListener("click", closeCancellationModal);
-
-        document.addEventListener("keydown", function (event) {
-            if (event.key === "Escape" && !modal.hidden) {
-                closeCancellationModal();
-            }
-        });
-
         confirmBtn.addEventListener("click", handleConfirmCancellation);
     }
 
     /**
-     * Opens cancellation modal for the targeted booking.
+     * Opens cancellation modal for the targeted booking and populates its details.
+     * Traps focus and adds backdrop click handling.
      * @param {number|string} requestId
      */
     function openCancellationModal(requestId) {
         pendingCancelBookingId = requestId;
 
+        const targetBooking = currentBookings.find((b) => String(b.request_id) === String(requestId));
+
         const modal = document.getElementById("cancelBookingModal");
         const modalMsg = document.getElementById("cancelModalMessage");
         const confirmBtn = document.getElementById("confirmCancelBtn");
+        const abortBtn = document.getElementById("abortCancelBtn");
+
+        const idEl = document.getElementById("cancelBookingId");
+        const pickupEl = document.getElementById("cancelPickup");
+        const destEl = document.getElementById("cancelDestination");
+        const typeEl = document.getElementById("cancelVehicleType");
+        const fareEl = document.getElementById("cancelFare");
+        const timeEl = document.getElementById("cancelTime");
 
         if (modalMsg) {
             modalMsg.hidden = true;
             modalMsg.textContent = "";
         }
 
+        if (targetBooking) {
+            if (idEl) idEl.textContent = `#${targetBooking.request_id}`;
+            if (pickupEl) pickupEl.textContent = targetBooking.pickup_location || "N/A";
+            if (destEl) destEl.textContent = targetBooking.drop_location || "N/A";
+            if (typeEl) typeEl.textContent = targetBooking.vehicle_type || "Standard";
+            const fareAmt = targetBooking.final_fare != null ? targetBooking.final_fare : targetBooking.estimated_fare;
+            if (fareEl) fareEl.textContent = formatFare(fareAmt);
+
+            if (timeEl) {
+                let timeStr = "N/A";
+                try {
+                    timeStr = new Date(targetBooking.created_at).toLocaleString("en-IN", {
+                        dateStyle: "medium",
+                        timeStyle: "short"
+                    });
+                } catch (e) {
+                    timeStr = String(targetBooking.created_at);
+                }
+                timeEl.textContent = timeStr;
+            }
+        }
+
         if (modal) {
             modal.hidden = false;
+            if (typeof cancelModalCleanup === "function") {
+                cancelModalCleanup();
+            }
+            cancelModalCleanup = trapModalFocus(modal, closeCancellationModal);
         }
+
         if (confirmBtn) {
+            setButtonLoading(confirmBtn, false);
             confirmBtn.focus();
+        }
+        if (abortBtn) {
+            abortBtn.disabled = false;
         }
     }
 
@@ -965,15 +1166,17 @@
         if (modal) {
             modal.hidden = true;
         }
+        if (typeof cancelModalCleanup === "function") {
+            cancelModalCleanup();
+            cancelModalCleanup = null;
+        }
         pendingCancelBookingId = null;
         isCancellingPending = false;
 
         const confirmBtn = document.getElementById("confirmCancelBtn");
         const abortBtn = document.getElementById("abortCancelBtn");
         if (confirmBtn) {
-            confirmBtn.disabled = false;
-            confirmBtn.removeAttribute("aria-busy");
-            confirmBtn.textContent = "Yes, Cancel Booking";
+            setButtonLoading(confirmBtn, false);
         }
         if (abortBtn) {
             abortBtn.disabled = false;
@@ -982,6 +1185,7 @@
 
     /**
      * Sends POST /api/ride-requests/:id/cancel request.
+     * Shows loading state and updates the booking list/status without a full page reload.
      */
     async function handleConfirmCancellation() {
         if (!pendingCancelBookingId || isCancellingPending) {
@@ -994,11 +1198,7 @@
         const bookingMessage = document.getElementById("bookingMessage");
 
         isCancellingPending = true;
-        if (confirmBtn) {
-            confirmBtn.disabled = true;
-            confirmBtn.setAttribute("aria-busy", "true");
-            confirmBtn.textContent = "Cancelling...";
-        }
+        setButtonLoading(confirmBtn, true, "Cancelling...");
         if (abortBtn) {
             abortBtn.disabled = true;
         }
@@ -1012,21 +1212,23 @@
 
             if (response.status === 401) {
                 clearSession();
-                window.location.replace("login.html");
+                window.location.replace("login.html?expired=1");
                 return;
             }
 
             if (!response.ok) {
                 let errorMsg;
                 if (response.status === 404) {
-                    errorMsg = "This ride can no longer be cancelled, it may already have been accepted.";
+                    errorMsg = "This ride can no longer be cancelled; it may already have been accepted or completed.";
+                } else if (response.status === 409) {
+                    errorMsg = getErrorMessage(response.data, "Cannot cancel this ride in its current status.");
                 } else if (response.status === 0) {
                     errorMsg = "Cannot reach the server. Please check your connection.";
                 } else {
-                    errorMsg = getErrorMessage(response.data, "Failed to cancel booking.");
+                    errorMsg = getErrorMessage(response.data, "Failed to cancel booking. Please try again.");
                 }
                 showMessage(modalMsg, errorMsg, "error");
-                await fetchBookings();
+                await fetchBookings(false);
                 return;
             }
 
@@ -1037,17 +1239,13 @@
                 showMessage(bookingMessage, `Booking #${cancelledId} cancelled successfully.`, "success");
             }
 
-            // Refresh UI immediately
-            await fetchBookings();
+            // Refresh UI in the DOM without a full page reload
+            await fetchBookings(false);
         } catch (err) {
             showMessage(modalMsg, "An error occurred while cancelling your booking.", "error");
         } finally {
             isCancellingPending = false;
-            if (confirmBtn) {
-                confirmBtn.disabled = false;
-                confirmBtn.removeAttribute("aria-busy");
-                confirmBtn.textContent = "Yes, Cancel Booking";
-            }
+            setButtonLoading(confirmBtn, false);
             if (abortBtn) {
                 abortBtn.disabled = false;
             }
@@ -1069,7 +1267,7 @@
 
         const total = bookings.length;
         const completed = bookings.filter((b) => b.status === "completed").length;
-        const active = bookings.filter((b) => ["requested", "accepted", "started"].includes(b.status)).length;
+        const active = bookings.filter((b) => ["requested", "pending", "accepted", "started", "ongoing"].includes(b.status)).length;
 
         if (totalEl) {
             totalEl.textContent = String(total);
@@ -1085,6 +1283,7 @@
     /**
      * Renders trip history into the table: completed and cancelled trips, newest first.
      * Formats date with toLocaleString("en-IN") and INR currency.
+     * Sets data-label on every td for responsive mobile card stacking without horizontal scroll.
      * @param {Array} bookings
      */
     function updateTripHistoryTable(bookings) {
@@ -1103,7 +1302,42 @@
             const td = document.createElement("td");
             td.colSpan = 7;
             td.className = "empty-state-cell";
-            td.textContent = "No trips yet. Your completed and past rides will appear here.";
+
+            const emptyWrapper = document.createElement("div");
+            emptyWrapper.className = "empty-state";
+            emptyWrapper.style.padding = "16px";
+
+            const iconSpan = document.createElement("span");
+            iconSpan.className = "empty-state-icon";
+            iconSpan.textContent = "🗺️";
+            emptyWrapper.appendChild(iconSpan);
+
+            const titleEl = document.createElement("div");
+            titleEl.className = "empty-state-title";
+            titleEl.textContent = "No Past Trips";
+            emptyWrapper.appendChild(titleEl);
+
+            const p = document.createElement("p");
+            p.textContent = "You don't have any past rides yet. Book your first ride to get moving!";
+            emptyWrapper.appendChild(p);
+
+            const ctaBtn = document.createElement("button");
+            ctaBtn.type = "button";
+            ctaBtn.className = "button secondary";
+            ctaBtn.textContent = "Book Your First Ride";
+            ctaBtn.addEventListener("click", () => {
+                const pickupInput = document.getElementById("pickup");
+                if (pickupInput) {
+                    pickupInput.focus();
+                }
+                const searchForm = document.getElementById("searchForm");
+                if (searchForm) {
+                    searchForm.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+            });
+            emptyWrapper.appendChild(ctaBtn);
+
+            td.appendChild(emptyWrapper);
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
@@ -1117,11 +1351,13 @@
 
             // Trip / Request ID
             const tdId = document.createElement("td");
+            tdId.setAttribute("data-label", "Trip ID");
             tdId.textContent = `#${trip.request_id}`;
             tr.appendChild(tdId);
 
             // Date (en-IN)
             const tdDate = document.createElement("td");
+            tdDate.setAttribute("data-label", "Date");
             let dateStr = "N/A";
             if (trip.created_at) {
                 try {
@@ -1138,23 +1374,27 @@
 
             // Route
             const tdRoute = document.createElement("td");
+            tdRoute.setAttribute("data-label", "Route");
             tdRoute.textContent = `${trip.pickup_location || "N/A"} → ${trip.drop_location || "N/A"}`;
             tr.appendChild(tdRoute);
 
             // Vehicle
             const tdVehicle = document.createElement("td");
+            tdVehicle.setAttribute("data-label", "Vehicle");
             tdVehicle.style.textTransform = "capitalize";
             tdVehicle.textContent = trip.vehicle_type || "Standard";
             tr.appendChild(tdVehicle);
 
             // Fare
             const tdFare = document.createElement("td");
+            tdFare.setAttribute("data-label", "Fare");
             const fareAmount = trip.final_fare != null ? trip.final_fare : trip.estimated_fare;
             tdFare.textContent = formatFare(fareAmount);
             tr.appendChild(tdFare);
 
             // Status Badge
             const tdStatus = document.createElement("td");
+            tdStatus.setAttribute("data-label", "Status");
             const badge = document.createElement("span");
             badge.className = `badge badge-status-${trip.status}`;
             badge.textContent = (trip.status || "UNKNOWN").toUpperCase();
@@ -1163,6 +1403,7 @@
 
             // Driver Name
             const tdDriver = document.createElement("td");
+            tdDriver.setAttribute("data-label", "Driver");
             tdDriver.textContent = trip.driver && trip.driver.full_name ? trip.driver.full_name : "—";
             tr.appendChild(tdDriver);
 
@@ -1170,10 +1411,152 @@
         });
     }
 
+    /* ==========================================================================
+       6. Notifications Panel (Day 6 - Task 7)
+       ========================================================================== */
+
+    /**
+     * Fetches notifications for the logged-in passenger.
+     * @param {boolean} [isInitial=false]
+     */
+    async function fetchNotifications(isInitial = false) {
+        const container = document.getElementById("notificationsList");
+        const badge = document.getElementById("unreadNotificationsBadge");
+        if (!container) return;
+
+        if (isInitial) {
+            showContainerLoading(container, "Loading notifications...");
+        }
+
+        try {
+            const endpoint = (API_CONFIG.ENDPOINTS && API_CONFIG.ENDPOINTS.notifications) || "/api/notifications";
+            const response = await apiRequest(endpoint, "GET");
+
+            if (!response.ok) {
+                if (isInitial) {
+                    showContainerError(
+                        container,
+                        getErrorMessage(response.data, "Failed to load notifications."),
+                        () => fetchNotifications(true)
+                    );
+                }
+                return;
+            }
+
+            const notifications = (response.data && Array.isArray(response.data.notifications))
+                ? response.data.notifications
+                : [];
+
+            renderNotifications(notifications);
+        } catch (err) {
+            if (isInitial) {
+                showContainerError(
+                    container,
+                    "Failed to load notifications. Please retry.",
+                    () => fetchNotifications(true)
+                );
+            }
+        }
+    }
+
+    /**
+     * Renders notifications list cleanly using safe DOM APIs.
+     * @param {Array} list
+     */
+    function renderNotifications(list) {
+        const container = document.getElementById("notificationsList");
+        const badge = document.getElementById("unreadNotificationsBadge");
+        if (!container) return;
+
+        container.textContent = "";
+
+        const unreadCount = list.filter((n) => !n.is_read).length;
+        if (badge) {
+            if (unreadCount > 0) {
+                badge.textContent = String(unreadCount);
+                badge.hidden = false;
+            } else {
+                badge.hidden = true;
+            }
+        }
+
+        if (list.length === 0) {
+            showContainerEmpty(container, {
+                icon: "🔔",
+                title: "",
+                message: "No notifications yet."
+            });
+            return;
+        }
+
+        const listEl = document.createElement("div");
+        listEl.className = "notifications-list";
+
+        list.forEach((item) => {
+            const itemEl = document.createElement("div");
+            itemEl.className = "notification-item" + (!item.is_read ? " unread" : "");
+
+            const contentDiv = document.createElement("div");
+            contentDiv.className = "notification-content";
+
+            const msgP = document.createElement("p");
+            msgP.className = "notification-message";
+            msgP.textContent = item.message || "Notification";
+            contentDiv.appendChild(msgP);
+
+            const metaSpan = document.createElement("span");
+            metaSpan.className = "notification-meta";
+            let timeStr = "";
+            if (item.created_at) {
+                try {
+                    timeStr = new Date(item.created_at).toLocaleString("en-IN", {
+                        dateStyle: "short",
+                        timeStyle: "short"
+                    });
+                } catch (e) {
+                    timeStr = String(item.created_at);
+                }
+            }
+            metaSpan.textContent = timeStr ? timeStr : "";
+            contentDiv.appendChild(metaSpan);
+
+            const statusBadge = document.createElement("span");
+            statusBadge.className = "notification-status-badge " + (!item.is_read ? "unread" : "read");
+            statusBadge.textContent = !item.is_read ? "New" : "Read";
+
+            itemEl.appendChild(contentDiv);
+            itemEl.appendChild(statusBadge);
+
+            // Clicking an unread item marks it as read via PATCH
+            if (!item.is_read) {
+                itemEl.title = "Click to mark as read";
+                itemEl.addEventListener("click", async () => {
+                    const readUrl = typeof API_CONFIG.getMarkNotificationReadUrl === "function"
+                        ? API_CONFIG.getMarkNotificationReadUrl(item.notification_id)
+                        : `/api/notifications/${encodeURIComponent(item.notification_id)}/read`;
+                    try {
+                        const patchRes = await apiRequest(readUrl, "PATCH");
+                        if (patchRes.ok) {
+                            item.is_read = 1;
+                            renderNotifications(list);
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                });
+            }
+
+            listEl.appendChild(itemEl);
+        });
+
+        container.appendChild(listEl);
+    }
+
     // Expose for debugging if needed
     if (typeof window !== "undefined") {
         window.CabGoPassenger = {
             fetchBookings: fetchBookings,
+            fetchNotifications: fetchNotifications,
             openBookingConfirmationModal: openBookingConfirmationModal,
             openCancellationModal: openCancellationModal,
             normalizeBooking: normalizeBooking
