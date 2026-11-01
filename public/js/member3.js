@@ -117,6 +117,37 @@
     });
   }
 
+  function initDriverPasswordForm() {
+    const form = document.getElementById("driverPasswordForm");
+    const message = document.getElementById("driverPasswordMessage");
+    if (!form) return;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const currentPassword = document.getElementById("currentDriverPassword")?.value || "";
+      const newPassword = document.getElementById("newDriverPassword")?.value || "";
+
+      if (newPassword.length < 8 || newPassword.length > 72) {
+        showMessageEl(message, "New password must be between 8 and 72 characters.", "error");
+        return;
+      }
+
+      const response = await apiRequest(
+        API_CONFIG.ENDPOINTS.driverChangePassword || "/api/driver/password",
+        "POST",
+        { current_password: currentPassword, new_password: newPassword }
+      );
+      showMessageEl(
+        message,
+        response.ok
+          ? response.data.message
+          : (response.data?.error?.message || "Could not change password."),
+        response.ok ? "success" : "error"
+      );
+      if (response.ok) form.reset();
+    });
+  }
+
   /* ==========================================================================
      Day 2: Driver Login Authentication Handler
      ========================================================================== */
@@ -1630,10 +1661,37 @@
     syncAdminSession();
     const tableBody = document.getElementById("driversTableBody");
     const statusMsg = document.getElementById("driversPageMessage");
+    const registerForm = document.getElementById("registerDriverForm");
+    const registerMessage = document.getElementById("registerDriverMessage");
     const searchInput = document.getElementById("driverSearchInput");
     const statusFilter = document.getElementById("driverStatusFilter");
 
     let allDrivers = [];
+
+    if (registerForm) {
+      registerForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formData = new FormData(registerForm);
+        const response = await apiRequest(
+          API_CONFIG.ENDPOINTS.adminRegisterDriver || "/api/admin/drivers",
+          "POST",
+          Object.fromEntries(formData.entries())
+        );
+
+        if (registerMessage) {
+          registerMessage.hidden = false;
+          registerMessage.textContent = response.ok
+            ? response.data.message
+            : getErrorMessage(response.data, "Could not register driver.");
+          registerMessage.className = response.ok ? "message success" : "message";
+        }
+
+        if (response.ok) {
+          registerForm.reset();
+          fetchDrivers();
+        }
+      });
+    }
 
     async function fetchDrivers() {
       if (!tableBody) return;
@@ -2374,6 +2432,7 @@
       requirePageRole("driver").then((authorized) => {
         if (!authorized) return;
         syncDriverSession();
+        initDriverPasswordForm();
         initAvailabilityControls();
         initRideRequestActions();
         initCompleteTripModal();

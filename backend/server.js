@@ -294,7 +294,12 @@ async function requireRole(req, allowedRoles) {
         };
     }
 
-    if (!allowedRoles.includes(session.role)) {
+    const sessionRole = typeof session.role === 'string'
+        ? session.role.trim().toLowerCase()
+        : '';
+    const normalizedAllowedRoles = allowedRoles.map((role) => String(role).trim().toLowerCase());
+
+    if (!normalizedAllowedRoles.includes(sessionRole)) {
         return {
             ok: false,
             status: 403,
@@ -747,6 +752,68 @@ const server = http.createServer(async (req, res) => {
                     message: 'An unexpected server error occurred.'
                 }
             }));
+        }
+        return;
+    }
+
+    // Change the authenticated driver's password
+    if (req.method === 'POST' && pathname === '/api/driver/password') {
+        const auth = await requireRole(req, ['driver']);
+        if (!auth.ok) {
+            sendJson(res, auth.status, { error: auth.error });
+            return;
+        }
+
+        try {
+            const data = await readRequestBody(req);
+            const currentPassword = typeof data.current_password === 'string' ? data.current_password : '';
+            const newPassword = typeof data.new_password === 'string' ? data.new_password : '';
+
+            if (
+                !currentPassword ||
+                newPassword.length < 8 ||
+                newPassword.length > 72 ||
+                currentPassword === newPassword
+            ) {
+                sendJson(res, 400, {
+                    error: {
+                        code: 'INVALID_PASSWORD',
+                        message: 'Enter your current password and a different password between 8 and 72 characters.'
+                    }
+                });
+                return;
+            }
+
+            const [users] = await pool.execute(
+                'SELECT password_hash FROM users WHERE user_id = ? AND role = \'driver\' AND account_status = \'active\'',
+                [auth.session.userId]
+            );
+            if (users.length === 0 || !(await bcrypt.compare(currentPassword, users[0].password_hash))) {
+                sendJson(res, 401, {
+                    error: { code: 'INVALID_CURRENT_PASSWORD', message: 'Current password is incorrect.' }
+                });
+                return;
+            }
+
+            const passwordHash = await bcrypt.hash(newPassword, 12);
+            await pool.execute(
+                'UPDATE users SET password_hash = ? WHERE user_id = ? AND role = \'driver\' AND account_status = \'active\'',
+                [passwordHash, auth.session.userId]
+            );
+
+            sendJson(res, 200, { message: 'Password changed successfully.' });
+        } catch (error) {
+            if (error.code === 'INVALID_JSON' || error.code === 'REQUEST_BODY_TOO_LARGE') {
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_JSON', message: error.message }
+                });
+                return;
+            }
+
+            console.error('Driver password change error:', error.message);
+            sendJson(res, 500, {
+                error: { code: 'SERVER_ERROR', message: 'Could not change password.' }
+            });
         }
         return;
     }
@@ -3053,6 +3120,126 @@ const server = http.createServer(async (req, res) => {
             console.error('Admin drivers error:', error.message);
             res.writeHead(500);
             res.end(JSON.stringify({ error: { code: 'SERVER_ERROR', message: 'Could not fetch drivers.' } }));
+        }
+        return;
+    }
+
+    // POST /api/admin/drivers
+    if (req.method === 'POST' && pathname === '/api/admin/drivers') {
+        const auth = await requireRole(req, ['admin', 'super_admin']);
+        if (!auth.ok) {
+            res.writeHead(auth.status);
+            res.end(JSON.stringify({ error: auth.error }));
+            return;
+        }
+
+        let connection;
+        try {
+            const data = await readRequestBody(req);
+            const name = typeof data.name === 'string' ? data.name.trim() : '';
+            const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+            const password = typeof data.password === 'string' ? data.password : '';
+            const licenseNumber = typeof data.license_number === 'string'
+                ? data.license_number.trim()
+                : '';
+            const licenseExpiry = typeof data.license_expiry === 'string'
+                ? data.license_expiry.trim()
+                : '';
+
+            const expiryDate = /^\d{4}-\d{2}-\d{2}$/.test(licenseExpiry)
+                ? new Date(`${licenseExpiry}T00:00:00Z`)
+                : null;
+            const today = new Date();
+            today.setUTCHours(0, 0, 0, 0);
+
+            if (
+                name.length < 2 ||
+                name.length > 100 ||
+                !/^[A-Za-z\s.'-]+$/.test(name) ||
+                email.length > 255 ||
+                !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+                password.length < 8 ||
+                password.length > 72 ||
+                licenseNumber.length < 1 ||
+                licenseNumber.length > 100 ||
+                !expiryDate ||
+                Number.isNaN(expiryDate.getTime()) ||
+                expiryDate < today
+            ) {
+                sendJson(res, 400, {
+                    error: {
+                        code: 'INVALID_INPUT',
+                        message: 'Provide a valid name, email, password, license number, and non-expired license expiry date.'
+                    }
+                });
+                return;
+            }
+
+            const passwordHash = await bcrypt.hash(password, 12);
+            connection = await pool.getConnection();
+            await connection.beginTransaction();
+
+            const [userResult] = await connection.execute(
+                `INSERT INTO users (full_name, email, password_hash, role, account_status)
+                 VALUES (?, ?, ?, 'driver', 'active')`,
+                [name, email, passwordHash]
+            );
+            const [profileResult] = await connection.execute(
+                `INSERT INTO driver_profiles
+                    (user_id, license_number, license_expiry, verification_status, availability_status)
+                 VALUES (?, ?, ?, 'pending', 'offline')`,
+                [userResult.insertId, licenseNumber, licenseExpiry]
+            );
+
+            await connection.commit();
+            sendJson(res, 201, {
+                message: 'Driver registered successfully and is pending approval.',
+                driver: {
+                    driver_id: profileResult.insertId,
+                    user_id: userResult.insertId,
+                    full_name: name,
+                    email,
+                    license_number: licenseNumber,
+                    license_expiry: licenseExpiry,
+                    verification_status: 'pending',
+                    account_status: 'active'
+                }
+            });
+            await recordAuditLog(auth.session.userId, 'Registered driver', 'driver', profileResult.insertId);
+        } catch (error) {
+            if (connection) {
+                try {
+                    await connection.rollback();
+                } catch (rollbackError) {
+                    console.error('Register driver rollback error:', rollbackError.message);
+                }
+            }
+
+            if (error.code === 'INVALID_JSON' || error.code === 'REQUEST_BODY_TOO_LARGE') {
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_JSON', message: error.message }
+                });
+                return;
+            }
+
+            if (error.code === 'ER_DUP_ENTRY') {
+                sendJson(res, 409, {
+                    error: {
+                        code: 'DUPLICATE_DRIVER',
+                        message: 'The email or license number is already registered.'
+                    }
+                });
+                return;
+            }
+
+            console.error('Admin driver registration error:', error.message);
+            sendJson(res, 500, {
+                error: { code: 'SERVER_ERROR', message: 'Could not register driver.' }
+            });
+        } finally {
+            if (connection) {
+                connection.release();
+            }
         }
         return;
     }

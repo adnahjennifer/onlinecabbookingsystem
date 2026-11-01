@@ -102,6 +102,20 @@
       </section>
 
       <!-- Vehicle and Earnings Summary Row -->
+      <section class="panel">
+        <div class="panel-heading">
+          <h2>Change password</h2>
+        </div>
+        <form id="driverPasswordForm" novalidate>
+          <label for="currentDriverPassword">Current password</label>
+          <input id="currentDriverPassword" name="current_password" type="password" autocomplete="current-password" required>
+          <label for="newDriverPassword">New password</label>
+          <input id="newDriverPassword" name="new_password" type="password" minlength="8" maxlength="72" autocomplete="new-password" required>
+          <button class="button" type="submit">Change password</button>
+        </form>
+        <p id="driverPasswordMessage" class="message" role="status" hidden></p>
+      </section>
+
       <section class="two-col">
         <!-- Vehicle Card -->
         <article class="panel" id="vehicle">

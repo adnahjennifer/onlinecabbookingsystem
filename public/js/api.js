@@ -39,9 +39,11 @@ const API_CONFIG = {
         driverVehicleItem: "/api/driver/vehicles/:vehicle_id",
         driverEarnings: "/api/driver/earnings",
         driverAvailability: "/api/driver/availability",
+        driverChangePassword: "/api/driver/password",
         // Admin endpoints
         adminStats: "/api/admin/stats",
         adminDrivers: "/api/admin/drivers",
+        adminRegisterDriver: "/api/admin/drivers",
         adminDriverApprove: "/api/admin/drivers/:driver_id/approve",
         adminDriverReject: "/api/admin/drivers/:driver_id/reject",
         adminDriverBlock: "/api/admin/drivers/:driver_id/block",

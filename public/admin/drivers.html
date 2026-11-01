@@ -42,6 +42,38 @@
       <div id="driversPageMessage" class="message" style="margin-bottom: 20px;" hidden></div>
 
       <section class="panel">
+        <div class="panel-heading">
+          <h2>Register New Driver</h2>
+        </div>
+        <form id="registerDriverForm" class="two-col" novalidate>
+          <div>
+            <label for="driverName">Full name</label>
+            <input id="driverName" name="name" type="text" maxlength="100" required>
+          </div>
+          <div>
+            <label for="driverEmail">Email address</label>
+            <input id="driverEmail" name="email" type="email" maxlength="255" required>
+          </div>
+          <div>
+            <label for="driverPassword">Temporary password</label>
+            <input id="driverPassword" name="password" type="password" minlength="8" maxlength="72" required>
+          </div>
+          <div>
+            <label for="driverLicenseNumber">License number</label>
+            <input id="driverLicenseNumber" name="license_number" type="text" maxlength="100" required>
+          </div>
+          <div>
+            <label for="driverLicenseExpiry">License expiry</label>
+            <input id="driverLicenseExpiry" name="license_expiry" type="date" required>
+          </div>
+          <div style="display: flex; align-items: end;">
+            <button class="button" type="submit">Register Driver</button>
+          </div>
+        </form>
+        <p id="registerDriverMessage" class="message" role="status" hidden></p>
+      </section>
+
+      <section class="panel">
         <div class="panel-heading" style="flex-wrap: wrap; gap: 15px;">
           <h2>Driver Directory</h2>
           <div style="display: flex; gap: 10px; align-items: center;">

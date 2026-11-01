@@ -13,11 +13,17 @@ Authentication uses a persistent, hashed server-side session referenced by the H
 | `GET /api/me` | Logged in | None | `200` current user | `401` invalid or expired session, `500` database error |
 | `POST /api/logout` | Optional | None | `200`, clears session cookie | `200` even when already logged out |
 
+## Admin driver management
+
+| Method and URL | Auth | Body | Success | Errors |
+|---|---|---|---|---|
+| `POST /api/admin/drivers` | Admin or super-admin | `{ "name": string, "email": string, "password": string, "license_number": string, "license_expiry": "YYYY-MM-DD" }` | `201` active driver account with pending profile approval | `400` invalid input, `401`, `403`, `409` duplicate email/license, `500` |
+
 ## Passenger rides and fares
 
 | Method and URL | Auth | Body | Success | Errors |
 |---|---|---|---|---|
-| `POST /api/fare/estimate` | None | `{ "vehicle_type": "standard|sedan|suv", "distance_km": number, "duration_minutes": number }` | `200` calculated fare | `400` invalid input, `404` missing fare rule, `500` database error |
+| `POST /api/fare/estimate` | Passenger | `{ "vehicle_type": "standard|sedan|suv", "distance_km": number, "duration_minutes": number }` | `200` calculated fare | `400` invalid input, `401` unauthenticated, `403` wrong role, `404` missing fare rule, `500` database error |
 | `POST /api/ride-requests` | Passenger | `{ "pickup_location": string, "drop_location": string, "vehicle_type": string, "distance_km": number, "duration_minutes": number }` | `201` ride request with backend-calculated fare | `400` invalid input/JSON, `401` unauthenticated, `403` wrong role, `404` missing fare rule, `409` active booking exists, `500` database error |
 | `GET /api/ride-requests/mine` | Passenger | None | `200` passenger's own requests | `401`, `403`, `500` |
 | `POST /api/ride-requests/:request_id/cancel` | Passenger owner | None | `200` cancelled request | `400` invalid ID, `401`, `403`, `404` not owned or not cancellable, `500` |
@@ -26,6 +32,7 @@ Authentication uses a persistent, hashed server-side session referenced by the H
 
 | Method and URL | Auth | Body | Success | Errors |
 |---|---|---|---|---|
+| `POST /api/driver/password` | Driver | `{ "current_password": string, "new_password": string }` | `200` password changed | `400` invalid input, `401` incorrect current password, `403` wrong role, `500` |
 | `GET /api/driver/requests` | Approved driver | None | `200` matching available requests and driver's active trip | `401`, `403` unapproved/no profile, `500` |
 | `POST /api/driver/requests/:request_id/accept` | Approved driver with matching approved active vehicle | None | `201` creates an accepted trip | `400` invalid ID, `401`, `403`, `409` unavailable/duplicate/no vehicle, `500` |
 | `POST /api/driver/requests/:request_id/reject` | Approved driver with matching approved active vehicle | None | `200`; records one rejection and notifies passenger | `400` invalid ID, `401`, `403`, `409` unavailable/duplicate rejection, `500` |
