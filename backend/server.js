@@ -25,6 +25,8 @@ const loginAttempts = new Map();
 
 const MAX_DISTANCE_KM = 200;
 const MAX_DURATION_MINUTES = 600;
+const OTP_MIN = 100000;
+const OTP_MAX = 999999;
 const NOMINATIM_URL = process.env.NOMINATIM_URL || 'https://nominatim.openstreetmap.org/search';
 const OSRM_ROUTE_URL = process.env.OSRM_ROUTE_URL || 'https://router.project-osrm.org/route/v1/driving';
 const GEOCODE_TIMEOUT_MS = Number(process.env.GEOCODE_TIMEOUT_MS || 8000);
@@ -349,6 +351,10 @@ function parsePositiveId(value) {
 
     const id = Number(value);
     return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function generateBookingOtp() {
+    return String(crypto.randomInt(OTP_MIN, OTP_MAX + 1));
 }
 
 
@@ -1043,6 +1049,7 @@ const server = http.createServer(async (req, res) => {
             const connection = await pool.getConnection();
             try {
                 await connection.beginTransaction();
+                const otpCode = generateBookingOtp();
 
                 const [passengers] = await connection.execute(
                     `SELECT user_id
@@ -1135,14 +1142,15 @@ const server = http.createServer(async (req, res) => {
                 const [result] = await connection.execute(
                     `INSERT INTO ride_requests
                         (passenger_id, pickup_location, drop_location,
-                         vehicle_type, estimated_fare, status)
-                     VALUES (?, ?, ?, ?, ?, 'requested')`,
+                         vehicle_type, estimated_fare, otp_code, status)
+                     VALUES (?, ?, ?, ?, ?, ?, 'requested')`,
                     [
                         auth.session.userId,
                         canonicalPickup,
                         canonicalDrop,
                         vehicleType,
-                        estimatedFare
+                        estimatedFare,
+                        otpCode
                     ]
                 );
 
@@ -1159,6 +1167,7 @@ const server = http.createServer(async (req, res) => {
                         distance_km: distanceKm,
                         duration_minutes: durationMinutes,
                         estimated_fare: estimatedFare,
+                        otp_code: otpCode,
                         status: 'requested'
                     }
                 }));
@@ -1218,7 +1227,10 @@ const server = http.createServer(async (req, res) => {
             const [requests] = await pool.execute(
                 `SELECT rr.request_id, rr.pickup_location, rr.drop_location,
                         rr.vehicle_type, rr.estimated_fare, rr.status, rr.created_at,
+                        rr.otp_code, rr.otp_verified_at,
                         t.trip_id, t.started_at, t.completed_at, t.final_fare,
+                        t.payment_status, t.paid_at,
+                        COALESCE(dr.rating, tr.rating) AS passenger_rating,
                         du.full_name AS driver_full_name, dp.rating AS driver_rating,
                         v.model AS vehicle_model, v.registration_number,
                         v.vehicle_type AS assigned_vehicle_type
@@ -1227,6 +1239,8 @@ const server = http.createServer(async (req, res) => {
                  LEFT JOIN driver_profiles dp ON dp.driver_id = t.driver_id
                  LEFT JOIN users du ON du.user_id = dp.user_id
                  LEFT JOIN vehicles v ON v.vehicle_id = t.vehicle_id
+                 LEFT JOIN trip_reviews tr ON tr.trip_id = t.trip_id
+                 LEFT JOIN driver_ratings dr ON dr.trip_id = t.trip_id
                  WHERE rr.passenger_id = ?
                  ORDER BY rr.created_at DESC`,
                 [auth.session.userId]
@@ -1244,6 +1258,11 @@ const server = http.createServer(async (req, res) => {
                 started_at: request.started_at,
                 completed_at: request.completed_at,
                 final_fare: request.final_fare,
+                otp_code: request.otp_code,
+                otp_verified_at: request.otp_verified_at,
+                payment_status: request.payment_status,
+                paid_at: request.paid_at,
+                passenger_rating: request.passenger_rating,
                 driver: request.driver_full_name
                     ? {
                         full_name: request.driver_full_name,
@@ -1787,10 +1806,34 @@ const server = http.createServer(async (req, res) => {
 
             const driverId = drivers[0].driver_id;
 
+            let data;
+            try {
+                data = await readRequestBody(req);
+            } catch (error) {
+                await connection.rollback();
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_JSON', message: error.message }
+                });
+                return;
+            }
+
+            const otp = data && typeof data === 'object' && !Array.isArray(data) &&
+                typeof data.otp === 'string'
+                ? data.otp.trim()
+                : '';
+            if (!/^\d{6}$/.test(otp)) {
+                await connection.rollback();
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_OTP', message: 'A six-digit OTP is required.' }
+                });
+                return;
+            }
+
             const [trips] = await connection.execute(
-                `SELECT trip_id, request_id, status
-                 FROM trips
-                 WHERE trip_id = ? AND driver_id = ?
+                `SELECT t.trip_id, t.request_id, t.status, r.otp_code
+                 FROM trips t
+                 JOIN ride_requests r ON r.request_id = t.request_id
+                 WHERE t.trip_id = ? AND t.driver_id = ?
                  FOR UPDATE`,
                 [tripId, driverId]
             );
@@ -1823,6 +1866,14 @@ const server = http.createServer(async (req, res) => {
                 return;
             }
 
+            if (trips[0].otp_code !== otp) {
+                await connection.rollback();
+                sendJson(res, 401, {
+                    error: { code: 'INVALID_OTP', message: 'The OTP does not match this booking.' }
+                });
+                return;
+            }
+
             await connection.execute(
                 `UPDATE trips
                  SET status = 'started', started_at = NOW()
@@ -1832,7 +1883,7 @@ const server = http.createServer(async (req, res) => {
 
             await connection.execute(
                 `UPDATE ride_requests
-                 SET status = 'started'
+                 SET status = 'started', otp_verified_at = NOW()
                  WHERE request_id = ?`,
                 [trips[0].request_id]
             );
@@ -1976,40 +2027,60 @@ const server = http.createServer(async (req, res) => {
 
             const finalFare = Number(Number(trip.estimated_fare).toFixed(2));
 
+            const [existingPayments] = await connection.execute(
+                'SELECT payment_id FROM payments WHERE trip_id = ? FOR UPDATE',
+                [tripId]
+            );
+            if (existingPayments.length > 0) {
+                await connection.rollback();
+                sendJson(res, 409, {
+                    error: {
+                        code: 'PAYMENT_ALREADY_CREATED',
+                        message: 'A payment record already exists for this trip.'
+                    }
+                });
+                return;
+            }
+
             await connection.execute(
                 `UPDATE trips
                  SET status = 'completed',
+                     payment_status = 'pending',
                      completed_at = NOW(),
                      final_fare = ?
                  WHERE trip_id = ?`,
                 [finalFare, tripId]
             );
-
             await connection.execute(
-                `UPDATE ride_requests
-                 SET status = 'completed'
-                 WHERE request_id = ?`,
+                `UPDATE ride_requests SET status = 'completed' WHERE request_id = ?`,
                 [trip.request_id]
             );
-
             await connection.execute(
                 `UPDATE driver_profiles
                  SET availability_status = 'available'
                  WHERE driver_id = ?`,
                 [driverId]
             );
+            await connection.execute(
+                `INSERT INTO payments
+                    (trip_id, passenger_id, amount, payment_status)
+                 SELECT t.trip_id, r.passenger_id, t.final_fare, 'pending'
+                 FROM trips t
+                 JOIN ride_requests r ON r.request_id = t.request_id
+                 WHERE t.trip_id = ?`,
+                [tripId]
+            );
 
             await connection.commit();
 
-            res.writeHead(200, {
-                'Content-Type': 'application/json'
-            });
-            res.end(JSON.stringify({
-                message: 'Trip completed successfully.',
+            sendJson(res, 200, {
+                message: 'Trip completed. Passenger payment is pending.',
                 trip_id: tripId,
                 status: 'completed',
+                payment_required: true,
+                payment_status: 'pending',
                 final_fare: finalFare
-            }));
+            });
         } catch (error) {
             if (connection) {
                 try {
@@ -2035,6 +2106,274 @@ const server = http.createServer(async (req, res) => {
             }
         }
 
+        return;
+    }
+
+    // Passenger views completed trips that still need simulated payment.
+    if (req.method === 'GET' && pathname === '/api/payments/pending') {
+        const auth = await requireRole(req, ['passenger']);
+        if (!auth.ok) {
+            sendJson(res, auth.status, { error: auth.error });
+            return;
+        }
+
+        try {
+            const [payments] = await pool.execute(
+                `SELECT p.payment_id, p.trip_id, p.amount, p.payment_status, p.created_at,
+                        t.completed_at, dp.driver_id, du.full_name AS driver_name,
+                        dp.rating AS driver_rating
+                 FROM payments p
+                 JOIN trips t ON t.trip_id = p.trip_id
+                 JOIN driver_profiles dp ON dp.driver_id = t.driver_id
+                 JOIN users du ON du.user_id = dp.user_id
+                 WHERE p.passenger_id = ?
+                   AND p.payment_status = 'pending'
+                   AND t.status = 'completed'
+                 ORDER BY p.created_at DESC`,
+                [auth.session.userId]
+            );
+            sendJson(res, 200, { payments });
+        } catch (error) {
+            console.error('Get pending payments error:', error);
+            sendJson(res, 500, {
+                error: { code: 'SERVER_ERROR', message: 'Could not retrieve pending payments.' }
+            });
+        }
+        return;
+    }
+
+    // Passenger confirms local demo payment. The old trip URL remains supported.
+    const payTripMatch = pathname.match(/^\/api\/(?:payments\/([^/]+)\/pay|trips\/([^/]+)\/pay)$/);
+    if (req.method === 'POST' && payTripMatch) {
+        const auth = await requireRole(req, ['passenger']);
+        if (!auth.ok) {
+            sendJson(res, auth.status, { error: auth.error });
+            return;
+        }
+
+        const tripId = parsePositiveId(payTripMatch[1] || payTripMatch[2]);
+        if (tripId === null) {
+            sendJson(res, 400, {
+                error: { code: 'INVALID_ID', message: 'Trip ID must be a positive integer.' }
+            });
+            return;
+        }
+
+        let connection;
+        try {
+            connection = await pool.getConnection();
+            await connection.beginTransaction();
+
+            let data = {};
+            try {
+                data = await readRequestBody(req);
+            } catch (error) {
+                await connection.rollback();
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_JSON', message: error.message }
+                });
+                return;
+            }
+
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+                await connection.rollback();
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_INPUT', message: 'A payment method is required.' }
+                });
+                return;
+            }
+
+            const paymentMethod = typeof data.payment_method === 'string'
+                ? data.payment_method.trim().toLowerCase()
+                : (payTripMatch[1] ? '' : 'cash');
+            if (!['upi', 'card', 'cash'].includes(paymentMethod)) {
+                await connection.rollback();
+                sendJson(res, 400, {
+                    error: {
+                        code: 'INVALID_PAYMENT_METHOD',
+                        message: 'Payment method must be one of: UPI, card, or cash.'
+                    }
+                });
+                return;
+            }
+
+            const [trips] = await connection.execute(
+                `SELECT t.trip_id, t.request_id, t.status, t.payment_status,
+                        t.final_fare, p.payment_id, p.payment_status AS recorded_payment_status,
+                        p.passenger_id, t.driver_id
+                 FROM trips t
+                 JOIN ride_requests r ON r.request_id = t.request_id
+                 LEFT JOIN payments p ON p.trip_id = t.trip_id
+                 WHERE t.trip_id = ? AND r.passenger_id = ?
+                 FOR UPDATE`,
+                [tripId, auth.session.userId]
+            );
+
+            if (trips.length === 0) {
+                await connection.rollback();
+                sendJson(res, 404, {
+                    error: { code: 'TRIP_NOT_FOUND', message: 'Trip not found for this passenger.' }
+                });
+                return;
+            }
+
+            const trip = trips[0];
+            if (!trip.payment_id || trip.status !== 'completed' ||
+                trip.recorded_payment_status !== 'pending') {
+                await connection.rollback();
+                sendJson(res, 409, {
+                    error: {
+                        code: 'PAYMENT_NOT_REQUIRED',
+                        message: 'This trip is not currently awaiting payment.'
+                    }
+                });
+                return;
+            }
+
+            await connection.execute(
+                `UPDATE payments
+                 SET payment_method = ?, payment_status = 'paid', paid_at = NOW()
+                 WHERE payment_id = ? AND payment_status = 'pending'`,
+                [paymentMethod, trip.payment_id]
+            );
+            await connection.execute(
+                `UPDATE trips SET payment_status = 'paid', paid_at = NOW()
+                 WHERE trip_id = ?`,
+                [tripId]
+            );
+            await connection.commit();
+
+            sendJson(res, 200, {
+                message: 'Simulated payment recorded successfully.',
+                trip_id: tripId,
+                status: 'completed',
+                payment_status: 'paid',
+                final_fare: Number(trip.final_fare),
+                payment_method: paymentMethod
+            });
+        } catch (error) {
+            if (connection) {
+                try {
+                    await connection.rollback();
+                } catch (rollbackError) {
+                    console.error('Payment rollback error:', rollbackError.message);
+                }
+            }
+            console.error('Trip payment error:', error);
+            sendJson(res, 500, {
+                error: { code: 'SERVER_ERROR', message: 'Could not process the payment.' }
+            });
+        } finally {
+            if (connection) connection.release();
+        }
+        return;
+    }
+
+    // Passenger submits one 1-5 star review after payment/completion.
+    const reviewTripMatch = pathname.match(/^\/api\/trips\/([^/]+)\/(?:rating|review)$/);
+    if (req.method === 'POST' && reviewTripMatch) {
+        const auth = await requireRole(req, ['passenger']);
+        if (!auth.ok) {
+            sendJson(res, auth.status, { error: auth.error });
+            return;
+        }
+
+        const tripId = parsePositiveId(reviewTripMatch[1]);
+        if (tripId === null) {
+            sendJson(res, 400, {
+                error: { code: 'INVALID_ID', message: 'Trip ID must be a positive integer.' }
+            });
+            return;
+        }
+
+        try {
+            const data = await readRequestBody(req);
+            if (!data || typeof data !== 'object' || Array.isArray(data)) {
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_INPUT', message: 'A rating from 1 to 5 is required.' }
+                });
+                return;
+            }
+            const rating = Number(data.rating);
+            if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+                sendJson(res, 400, {
+                    error: { code: 'INVALID_RATING', message: 'Rating must be a whole number from 1 to 5.' }
+                });
+                return;
+            }
+
+            const [trips] = await pool.execute(
+                `SELECT t.driver_id, t.status, p.payment_status
+                 FROM trips t
+                 JOIN ride_requests r ON r.request_id = t.request_id
+                 LEFT JOIN payments p ON p.trip_id = t.trip_id
+                 WHERE t.trip_id = ? AND r.passenger_id = ?`,
+                [tripId, auth.session.userId]
+            );
+            if (trips.length === 0) {
+                sendJson(res, 404, {
+                    error: { code: 'TRIP_NOT_FOUND', message: 'Trip not found for this passenger.' }
+                });
+                return;
+            }
+
+            const trip = trips[0];
+            if (trip.status !== 'completed' || trip.payment_status !== 'paid') {
+                sendJson(res, 409, {
+                    error: {
+                        code: 'TRIP_NOT_RATEABLE',
+                        message: 'Only paid completed trips can be rated.'
+                    }
+                });
+                return;
+            }
+            const connection = await pool.getConnection();
+            try {
+                await connection.beginTransaction();
+                await connection.execute(
+                    `INSERT INTO driver_ratings (trip_id, passenger_id, driver_id, rating)
+                     VALUES (?, ?, ?, ?)`,
+                    [tripId, auth.session.userId, trip.driver_id, rating]
+                );
+                await connection.execute(
+                    `UPDATE driver_profiles dp
+                     SET rating = (
+                         SELECT ROUND(AVG(dr.rating), 2)
+                         FROM driver_ratings dr
+                         WHERE dr.driver_id = dp.driver_id
+                     )
+                     WHERE dp.driver_id = ?`,
+                    [trip.driver_id]
+                );
+                await connection.commit();
+            } catch (error) {
+                try {
+                    await connection.rollback();
+                } catch (rollbackError) {
+                    console.error('Review rollback error:', rollbackError.message);
+                }
+                if (error.code === 'ER_DUP_ENTRY') {
+                    sendJson(res, 409, {
+                        error: { code: 'TRIP_ALREADY_RATED', message: 'This trip has already been rated.' }
+                    });
+                    return;
+                }
+                throw error;
+            } finally {
+                connection.release();
+            }
+
+            sendJson(res, 201, {
+                message: 'Thank you for rating your driver.',
+                trip_id: tripId,
+                rating
+            });
+        } catch (error) {
+            console.error('Trip review error:', error);
+            sendJson(res, 500, {
+                error: { code: 'SERVER_ERROR', message: 'Could not save the trip rating.' }
+            });
+        }
         return;
     }
 
@@ -2085,6 +2424,7 @@ const server = http.createServer(async (req, res) => {
                 const [rows] = await pool.execute(
                     `SELECT rr.request_id, rr.passenger_id, rr.pickup_location, rr.drop_location,
                             rr.vehicle_type, rr.estimated_fare, rr.status, rr.created_at,
+                            t.payment_status,
                             u.full_name as passenger_name,
                             t.trip_id
                      FROM ride_requests rr

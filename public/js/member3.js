@@ -468,12 +468,17 @@
           break;
 
         case "started":
-          statusBadge = '<span class="pill pill-purple status-pill">In Transit</span>';
-          actionControl = `
-            <div class="actions">
-              <button class="button button-small button-success" data-action="complete-trip" data-request-id="${reqId}" data-trip-id="${tripId}" data-estimate="${fare}" data-pickup="${pickup}" data-drop="${drop}" type="button">Complete Trip</button>
-            </div>
-          `;
+          if (req.payment_status === "pending") {
+            statusBadge = '<span class="pill pill-warning status-pill">Awaiting Payment</span>';
+            actionControl = '<span style="color:#92400e;font-size:11px;font-weight:700;">Payment requested</span>';
+          } else {
+            statusBadge = '<span class="pill pill-purple status-pill">In Transit</span>';
+            actionControl = `
+              <div class="actions">
+                <button class="button button-small button-success" data-action="complete-trip" data-request-id="${reqId}" data-trip-id="${tripId}" data-estimate="${fare}" data-pickup="${pickup}" data-drop="${drop}" type="button">Complete Trip</button>
+              </div>
+            `;
+          }
           break;
 
         case "completed":
@@ -673,6 +678,15 @@
 
         // 3. START TRIP ACTION
         if (action === "start-trip") {
+          const otp = window.prompt("Enter the 6-digit OTP provided by the passenger:");
+          if (otp === null) {
+            return;
+          }
+          if (!/^\d{6}$/.test(otp.trim())) {
+            showMessageEl(driverMessage, "Enter the passenger's six-digit OTP.", "error");
+            return;
+          }
+
           button.disabled = true;
           button.setAttribute("aria-busy", "true");
           const originalText = button.textContent;
@@ -683,7 +697,7 @@
               ? API_CONFIG.getDriverStartTripUrl(tripId)
               : `/api/trips/${tripId}/start`;
 
-            const response = await apiRequest(url, "POST");
+            const response = await apiRequest(url, "POST", { otp: otp.trim() });
 
             if (response.ok) {
               const req = state.requests.find(
@@ -795,7 +809,18 @@
 
           const response = await apiRequest(url, "POST");
 
-          if (response.ok) {
+          if (response.ok && response.data && response.data.payment_required) {
+            closeModal();
+            const driverMsg = document.getElementById("driverMessage");
+            if (driverMsg) {
+              showMessageEl(
+                driverMsg,
+                `Trip #TR-${tripId} is awaiting passenger payment of ${formatFare(response.data.final_fare)}. It will complete after payment.`,
+                ""
+              );
+            }
+            fetchDriverRequests();
+          } else if (response.ok) {
             closeModal();
             const req = state.requests.find(
               (r) => String(r.request_id || r.id) === String(reqId)

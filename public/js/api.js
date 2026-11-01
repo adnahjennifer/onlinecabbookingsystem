@@ -33,6 +33,8 @@ const API_CONFIG = {
         driverRejectRequest: "/api/driver/requests/:request_id/reject",
         driverStartTrip: "/api/trips/:trip_id/start",
         driverCompleteTrip: "/api/trips/:trip_id/complete",
+        passengerPayTrip: "/api/payments/:trip_id/pay",
+        passengerReviewTrip: "/api/trips/:trip_id/rating",
         driverVehicles: "/api/driver/vehicles",
         driverVehicleItem: "/api/driver/vehicles/:vehicle_id",
         driverEarnings: "/api/driver/earnings",
@@ -82,6 +84,12 @@ const API_CONFIG = {
     },
     getDriverCompleteTripUrl(tripId) {
         return this.ENDPOINTS.driverCompleteTrip.replace(":trip_id", encodeURIComponent(tripId));
+    },
+    getPassengerPayTripUrl(tripId) {
+        return this.ENDPOINTS.passengerPayTrip.replace(":trip_id", encodeURIComponent(tripId));
+    },
+    getPassengerReviewTripUrl(tripId) {
+        return this.ENDPOINTS.passengerReviewTrip.replace(":trip_id", encodeURIComponent(tripId));
     },
     getDriverVehicleItemUrl(vehicleId) {
         return this.ENDPOINTS.driverVehicleItem.replace(":vehicle_id", encodeURIComponent(vehicleId));

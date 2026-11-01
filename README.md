@@ -51,6 +51,13 @@ The export creates the `cab_booking_system` database, all tables, foreign keys,
 indexes, default settings, and the three initial fare rules. It is safe to run
 again on the same local database; it does not delete existing records.
 
+For an existing CabGo database created before the payment and rating feature,
+run the one-time migration after importing the schema:
+
+```bash
+mysql -u root -p < database/migrations/003_add_trip_payments_and_reviews.sql
+```
+
 If the MySQL `root` account cannot log in from the terminal, create a local
 application user first in the MySQL client:
 
@@ -130,6 +137,13 @@ authorized account is available.
   created by `npm run provision:admin`, then use the admin dashboard.
 - Super-admin: use the existing super-admin account or create one through the
   authorized admin workflow; do not hardcode credentials in source files.
+
+After a driver reaches the destination, the driver requests payment rather than
+completing the trip immediately. The passenger confirms the local demo payment
+from the passenger dashboard. No card details are collected and no external
+payment gateway is used. Once paid, the trip is completed and a one-time 1–5
+star rating popup appears; the driver's displayed rating is the average of all
+submitted trip ratings.
 
 ## Tests and checks
 

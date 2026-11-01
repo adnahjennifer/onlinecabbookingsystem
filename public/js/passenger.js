@@ -112,6 +112,10 @@
 
     // Is cancellation in flight
     let isCancellingPending = false;
+    let isRatingSubmitting = false;
+    let pendingPaymentTripId = null;
+    let pendingRatingTripId = null;
+    const promptedRatingTripIds = new Set();
 
     // Modal focus trap cleanup callbacks
     let confirmModalCleanup = null;
@@ -160,6 +164,7 @@
 
         return {
             request_id: requestId,
+            trip_id: item.trip_id !== undefined && item.trip_id !== null ? Number(item.trip_id) : null,
             pickup_location: item.pickup_location || "",
             drop_location: item.drop_location || "",
             vehicle_type: (item.vehicle_type || "standard").toLowerCase(),
@@ -170,7 +175,14 @@
             driver: driver,
             vehicle: vehicle,
             started_at: item.started_at || null,
-            completed_at: item.completed_at || null
+            completed_at: item.completed_at || null,
+            payment_status: item.payment_status || "unpaid",
+            paid_at: item.paid_at || null,
+            otp_code: item.otp_code || null,
+            otp_verified_at: item.otp_verified_at || null,
+            passenger_rating: item.passenger_rating !== undefined && item.passenger_rating !== null
+                ? Number(item.passenger_rating)
+                : null
         };
     }
 
@@ -208,6 +220,7 @@
         initSearchForm();
         initBookingConfirmationModal();
         initCancellationModal();
+        initPaymentAndRatingModals();
         initVisibilityHandling();
 
         // 2. Real session verification with GET /api/me
@@ -979,6 +992,7 @@
             updateStats(bookings);
             updateTripHistoryTable(bookings);
             updateActiveBookingSection(bookings);
+            promptForPostTripAction(bookings);
         } catch (err) {
             if (isInitial) {
                 if (activeContainer) {
@@ -1058,6 +1072,12 @@
         const rowId = createDetailRow("Booking ID", `#${activeBooking.request_id}`);
         detailsDiv.appendChild(rowId);
 
+        if (activeBooking.otp_code && !activeBooking.otp_verified_at) {
+            const otpValue = document.createElement("strong");
+            otpValue.textContent = activeBooking.otp_code;
+            detailsDiv.appendChild(createDetailRow("Start OTP", "", otpValue));
+        }
+
         // Row 3: Route (Pickup & Drop)
         const rowPickup = createDetailRow("Pickup Location", activeBooking.pickup_location);
         const rowDrop = createDetailRow("Destination", activeBooking.drop_location);
@@ -1076,6 +1096,16 @@
         const rowFare = createDetailRow(fareLabel, formatFare(fareAmount));
         detailsDiv.appendChild(rowVehicle);
         detailsDiv.appendChild(rowFare);
+
+        if (activeBooking.trip_id && activeBooking.payment_status === "pending") {
+            const paymentButton = document.createElement("button");
+            paymentButton.type = "button";
+            paymentButton.className = "button";
+            paymentButton.style.marginTop = "14px";
+            paymentButton.textContent = "Complete Payment";
+            paymentButton.addEventListener("click", () => openPaymentModal(activeBooking));
+            detailsDiv.appendChild(paymentButton);
+        }
 
         // Driver & Vehicle details section
         if (activeBooking.driver || activeBooking.vehicle) {
@@ -1515,14 +1545,211 @@
             tdStatus.appendChild(badge);
             tr.appendChild(tdStatus);
 
+            // Payment status
+            const tdPayment = document.createElement("td");
+            tdPayment.setAttribute("data-label", "Payment");
+            tdPayment.textContent = trip.status === "completed"
+                ? (String(trip.payment_status).toLowerCase() === "paid"
+                    ? "Paid"
+                    : String(trip.payment_status).toLowerCase() === "pending" ? "Pending" : "Unpaid")
+                : "—";
+            tr.appendChild(tdPayment);
+
             // Driver Name
             const tdDriver = document.createElement("td");
             tdDriver.setAttribute("data-label", "Driver");
             tdDriver.textContent = trip.driver && trip.driver.full_name ? trip.driver.full_name : "—";
+            if (trip.passenger_rating !== null) {
+                const ratingText = document.createElement("span");
+                ratingText.textContent = ` (Your rating: ${trip.passenger_rating}/5)`;
+                tdDriver.appendChild(ratingText);
+            }
             tr.appendChild(tdDriver);
+
+            if (trip.status === "completed" &&
+                trip.trip_id &&
+                String(trip.payment_status).toLowerCase() === "paid" &&
+                trip.passenger_rating === null) {
+                const rateButton = document.createElement("button");
+                rateButton.type = "button";
+                rateButton.className = "button secondary";
+                rateButton.textContent = "Rate";
+                rateButton.addEventListener("click", () => openRatingModal(trip));
+                tdDriver.appendChild(document.createTextNode(" "));
+                tdDriver.appendChild(rateButton);
+            }
 
             tbody.appendChild(tr);
         });
+    }
+
+    function initPaymentAndRatingModals() {
+        const paymentModal = document.getElementById("paymentModal");
+        const ratingModal = document.getElementById("ratingModal");
+        const confirmPaymentBtn = document.getElementById("confirmPaymentBtn");
+        const skipRatingBtn = document.getElementById("skipRatingBtn");
+
+        confirmPaymentBtn?.addEventListener("click", submitPayment);
+        skipRatingBtn?.addEventListener("click", closeRatingModal);
+        ratingModal?.addEventListener("click", (event) => {
+            if (event.target === ratingModal) closeRatingModal();
+        });
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape" && paymentModal && !paymentModal.hidden) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+        document.querySelectorAll(".rating-choice").forEach((button) => {
+            button.addEventListener("click", () => submitRating(Number(button.dataset.rating)));
+        });
+    }
+
+    function openPaymentModal(booking) {
+        pendingPaymentTripId = booking.trip_id;
+        const modal = document.getElementById("paymentModal");
+        const tripEl = document.getElementById("paymentTripId");
+        const amountEl = document.getElementById("paymentAmount");
+        const messageEl = document.getElementById("paymentModalMessage");
+        if (!modal) return;
+        if (tripEl) tripEl.textContent = `#${booking.trip_id}`;
+        if (amountEl) amountEl.textContent = formatFare(booking.final_fare ?? booking.estimated_fare);
+        if (messageEl) {
+            messageEl.hidden = true;
+            messageEl.textContent = "";
+        }
+        const methodEl = document.getElementById("paymentMethod");
+        if (methodEl) methodEl.value = "upi";
+        modal.hidden = false;
+        document.getElementById("confirmPaymentBtn")?.focus();
+    }
+
+    function closePaymentModal() {
+        const modal = document.getElementById("paymentModal");
+        if (modal) modal.hidden = true;
+        pendingPaymentTripId = null;
+    }
+
+    async function submitPayment() {
+        if (!pendingPaymentTripId) return;
+        const button = document.getElementById("confirmPaymentBtn");
+        const messageEl = document.getElementById("paymentModalMessage");
+        const methodEl = document.getElementById("paymentMethod");
+        setButtonLoading(button, true, "Processing...");
+        const url = typeof API_CONFIG.getPassengerPayTripUrl === "function"
+            ? API_CONFIG.getPassengerPayTripUrl(pendingPaymentTripId)
+            : `/api/trips/${encodeURIComponent(pendingPaymentTripId)}/pay`;
+        const response = await apiRequest(url, "POST", {
+            payment_method: methodEl ? methodEl.value : "upi"
+        });
+        if (!response.ok) {
+            if (messageEl) showMessage(messageEl, getErrorMessage(response.data, "Payment could not be completed."), "error");
+            setButtonLoading(button, false);
+            return;
+        }
+        closePaymentModal();
+        await fetchBookings(false);
+    }
+
+    function promptForPostTripAction(bookings) {
+        const paymentModal = document.getElementById("paymentModal");
+        const ratingModal = document.getElementById("ratingModal");
+        const booking = bookings.find((item) =>
+            item.status === "completed" &&
+            item.trip_id &&
+            String(item.payment_status).toLowerCase() === "pending"
+        );
+
+        // Payment must be completed before the rating prompt can be shown.
+        if (booking) {
+            if (ratingModal && !ratingModal.hidden) {
+                closeRatingModal();
+            }
+            if (pendingPaymentTripId === null && pendingRatingTripId === null) {
+                openPaymentModal(booking);
+            }
+            return;
+        }
+
+        if (pendingPaymentTripId !== null || pendingRatingTripId !== null ||
+            (paymentModal && !paymentModal.hidden) || (ratingModal && !ratingModal.hidden)) {
+            return;
+        }
+
+        promptForUnratedTrip(bookings);
+    }
+
+    function openRatingModal(trip) {
+        pendingRatingTripId = trip.trip_id;
+        const modal = document.getElementById("ratingModal");
+        const driverEl = document.getElementById("ratingDriverName");
+        const messageEl = document.getElementById("ratingModalMessage");
+        if (!modal) return;
+        if (driverEl) driverEl.textContent = `How was your trip with ${trip.driver?.full_name || "your driver"}?`;
+        if (messageEl) {
+            messageEl.hidden = true;
+            messageEl.textContent = "";
+        }
+        document.querySelectorAll(".rating-choice").forEach((button) => {
+            button.disabled = false;
+        });
+        const skipRatingBtn = document.getElementById("skipRatingBtn");
+        if (skipRatingBtn) skipRatingBtn.disabled = false;
+        modal.hidden = false;
+    }
+
+    function closeRatingModal() {
+        const modal = document.getElementById("ratingModal");
+        if (modal) modal.hidden = true;
+        pendingRatingTripId = null;
+    }
+
+    async function submitRating(rating) {
+        if (!pendingRatingTripId || isRatingSubmitting) return;
+        const messageEl = document.getElementById("ratingModalMessage");
+        const ratingButtons = document.querySelectorAll(".rating-choice");
+        const skipRatingBtn = document.getElementById("skipRatingBtn");
+        isRatingSubmitting = true;
+        ratingButtons.forEach((button) => {
+            button.disabled = true;
+        });
+        if (skipRatingBtn) skipRatingBtn.disabled = true;
+        const url = typeof API_CONFIG.getPassengerReviewTripUrl === "function"
+            ? API_CONFIG.getPassengerReviewTripUrl(pendingRatingTripId)
+            : `/api/trips/${encodeURIComponent(pendingRatingTripId)}/review`;
+        const response = await apiRequest(url, "POST", { rating });
+        if (!response.ok) {
+            if (messageEl) showMessage(messageEl, getErrorMessage(response.data, "Rating could not be saved."), "error");
+            isRatingSubmitting = false;
+            ratingButtons.forEach((button) => {
+                button.disabled = false;
+            });
+            if (skipRatingBtn) skipRatingBtn.disabled = false;
+            return;
+        }
+        const ratedTripId = pendingRatingTripId;
+        closeRatingModal();
+        promptedRatingTripIds.add(String(ratedTripId));
+        const bookingMessage = document.getElementById("bookingMessage");
+        if (bookingMessage) {
+            showMessage(bookingMessage, "Thank you for rating your driver.", "success");
+        }
+        isRatingSubmitting = false;
+        await fetchBookings(false);
+    }
+
+    function promptForUnratedTrip(bookings) {
+        const trip = bookings.find((item) =>
+            item.status === "completed" &&
+            item.trip_id &&
+            String(item.payment_status).toLowerCase() === "paid" &&
+            item.passenger_rating === null &&
+            !promptedRatingTripIds.has(String(item.trip_id))
+        );
+        if (trip && pendingRatingTripId === null) {
+            promptedRatingTripIds.add(String(trip.trip_id));
+            openRatingModal(trip);
+        }
     }
 
     /* ==========================================================================

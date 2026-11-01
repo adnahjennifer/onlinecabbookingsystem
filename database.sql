@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS ride_requests (
     drop_location VARCHAR(255) NOT NULL,
     vehicle_type ENUM('standard', 'sedan', 'suv') NOT NULL,
     estimated_fare DECIMAL(10,2) NOT NULL,
+    otp_code CHAR(6) NOT NULL,
+    otp_verified_at DATETIME NULL,
     status ENUM('requested', 'accepted', 'started', 'completed', 'cancelled')
         NOT NULL DEFAULT 'requested',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -85,6 +87,8 @@ CREATE TABLE IF NOT EXISTS trips (
     vehicle_id INT NOT NULL,
     status ENUM('accepted', 'started', 'completed', 'cancelled')
         NOT NULL DEFAULT 'accepted',
+    payment_status ENUM('unpaid', 'pending', 'paid') NOT NULL DEFAULT 'unpaid',
+    paid_at DATETIME NULL,
     started_at DATETIME NULL,
     completed_at DATETIME NULL,
     final_fare DECIMAL(10,2) NULL,
@@ -93,6 +97,49 @@ CREATE TABLE IF NOT EXISTS trips (
     FOREIGN KEY (driver_id) REFERENCES driver_profiles(driver_id),
     FOREIGN KEY (vehicle_id) REFERENCES vehicles(vehicle_id),
     CHECK (final_fare IS NULL OR final_fare >= 0)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    trip_id INT NOT NULL UNIQUE,
+    passenger_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_method ENUM('upi', 'card', 'cash') NULL,
+    payment_status ENUM('pending', 'paid') NOT NULL DEFAULT 'pending',
+    paid_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trip_id) REFERENCES trips(trip_id),
+    FOREIGN KEY (passenger_id) REFERENCES users(user_id),
+    CHECK (amount >= 0),
+    INDEX idx_payments_passenger_status (passenger_id, payment_status)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS trip_reviews (
+    review_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    trip_id INT NOT NULL UNIQUE,
+    passenger_id INT NOT NULL,
+    driver_id INT NOT NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trip_id) REFERENCES trips(trip_id),
+    FOREIGN KEY (passenger_id) REFERENCES users(user_id),
+    FOREIGN KEY (driver_id) REFERENCES driver_profiles(driver_id),
+    CHECK (rating BETWEEN 1 AND 5),
+    INDEX idx_trip_reviews_driver (driver_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS driver_ratings (
+    rating_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    trip_id INT NOT NULL UNIQUE,
+    passenger_id INT NOT NULL,
+    driver_id INT NOT NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trip_id) REFERENCES trips(trip_id),
+    FOREIGN KEY (passenger_id) REFERENCES users(user_id),
+    FOREIGN KEY (driver_id) REFERENCES driver_profiles(driver_id),
+    CHECK (rating BETWEEN 1 AND 5),
+    INDEX idx_driver_ratings_driver (driver_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS driver_rejections (
